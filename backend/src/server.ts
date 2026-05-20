@@ -87,20 +87,42 @@ app.register(async (wsApp) => {
   })
 })
 
-// Health check
+// Liveness: returns 200 as soon as the HTTP server is up, regardless of
+// MongoDB readiness. Railway's healthcheck hits this — gating it on the DB
+// would cause healthcheck failures whenever Mongo cold-starts slowly.
 app.get('/health', async () => ({ ok: true, ts: Date.now() }))
+
+// Readiness: returns 200 only when MongoDB has connected. Use this for
+// downstream callers that need to know the API can actually serve data.
+app.get('/health/ready', async (_req, reply) => {
+  const ready = mongoose.connection.readyState === 1
+  return reply.code(ready ? 200 : 503).send({ ready, mongo: mongoose.connection.readyState })
+})
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 const start = async () => {
-  const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/champlens'
-  await mongoose.connect(MONGODB_URI)
-  app.log.info('MongoDB connected')
-  await seedAdmin()
-
+  // Listen on $PORT FIRST so Railway's healthcheck succeeds quickly. Connect
+  // to dependencies in the background — failures are logged, not fatal.
   const port = Number(process.env.PORT ?? 3001)
   await app.listen({ port, host: '0.0.0.0' })
   app.log.info(`Server running on port ${port}`)
+
+  const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/champlens'
+  const connectWithRetry = async () => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 10_000 })
+        app.log.info('MongoDB connected')
+        try { await seedAdmin() } catch (err) { app.log.error({ err }, 'seedAdmin failed') }
+        return
+      } catch (err) {
+        app.log.error({ err, attempt }, 'MongoDB connection failed; retrying in 10s')
+        await new Promise((r) => setTimeout(r, 10_000))
+      }
+    }
+  }
+  void connectWithRetry()
 }
 
 start().catch((err) => { console.error(err); process.exit(1) })
