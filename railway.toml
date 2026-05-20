@@ -1,0 +1,15 @@
+# Railway config for the ChampLens API service (Fastify backend).
+# This is the root config — used when the Railway service has no Root Directory set.
+# Reference: https://docs.railway.com/config-as-code/reference
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Shell form so $PORT (Railway-provided) expands; server.ts reads process.env.PORT.
+startCommand = "sh -c 'PORT=${PORT:-3001} node dist/server.js'"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

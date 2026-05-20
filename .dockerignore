@@ -1,0 +1,61 @@
+# Build context hygiene — keep the image small and the build fast.
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Editor / OS noise
+.DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+
+# Dependencies (re-installed inside the image)
+**/node_modules
+**/.pnpm-store
+
+# Build artefacts (Docker rebuilds these inside)
+**/dist
+**/build
+**/.next
+**/coverage
+
+# Frontend (this Dockerfile builds the BACKEND; frontend has its own Dockerfile)
+frontend
+
+# Docs (not needed in the running image)
+PRD.md
+SETUP.md
+README.md
+*.md
+!backend/**/*.md
+
+# Local environment files — never bake secrets into images
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Docker-compose local files
+docker-compose*.yml
+.env.docker
+.env.docker.local
+
+# Logs and runtime data
+*.log
+npm-debug.log*
+**/uploads/*
+!**/uploads/.gitkeep
+
+# Test fixtures
+**/__tests__
+**/*.test.*
+**/*.spec.*
+
+# CI configs
+.github
+.gitlab-ci.yml

@@ -1,0 +1,143 @@
+services:
+
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7.0
+    container_name: champlens-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-champlens}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-champlens_secret}
+      MONGO_INITDB_DATABASE: champlens
+    volumes:
+      - mongodb_data:/data/db
+      - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/init.js:ro
+    ports:
+      - "27017:27017"
+    networks:
+      - champlens-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: champlens-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --requirepass ${REDIS_PASSWORD:-redis_secret}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - champlens-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Backend API ────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: champlens-backend
+    restart: unless-stopped
+    env_file: .env.docker.local
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-champlens}:${MONGO_INITDB_ROOT_PASSWORD:-champlens_secret}@mongodb:27017/champlens?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      FILE_BASE_URL: ${FILE_BASE_URL:-http://localhost/files}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@champlens.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "3001:3001"
+    networks:
+      - champlens-net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Worker (BullMQ processing pipeline) ───────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: champlens-worker
+    restart: unless-stopped
+    command: ["node", "dist/workers/index.js"]
+    env_file: .env.docker.local
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-champlens}:${MONGO_INITDB_ROOT_PASSWORD:-champlens_secret}@mongodb:27017/champlens?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      FILE_BASE_URL: ${FILE_BASE_URL:-http://localhost/files}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      LOGO_PATH: ${LOGO_PATH:-/app/src/assets/qr-logo.jpeg}
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - champlens-net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  # ── Frontend (nginx + Vite build) ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+        VITE_APP_NAME: ChampLens
+    container_name: champlens-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - champlens-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  champlens-net:
+    driver: bridge

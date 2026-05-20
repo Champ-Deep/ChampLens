@@ -1,0 +1,35 @@
+# Railway frontend Dockerfile — serves the Vite SPA via `serve`.
+# Listens on $PORT, rewrites SPA routes, applies COOP/COEP via serve.json.
+# Build context = ./frontend (set Root Directory=frontend in Railway).
+
+# ─── Stage 1: build ───────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci --ignore-scripts
+
+COPY . .
+
+# Build args injected at build time by Railway service settings.
+# VITE_API_URL must be the public URL of the ChampLens API service.
+ARG VITE_API_URL=""
+ARG VITE_APP_NAME=ChampLens
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_APP_NAME=$VITE_APP_NAME
+
+RUN npm run build
+
+# ─── Stage 2: runtime (static serve) ──────────────────────────────────────────
+FROM node:20-alpine AS runtime
+
+WORKDIR /app
+
+RUN npm install -g serve@14
+
+COPY --from=builder /app/dist ./dist
+COPY serve.json ./serve.json
+
+# `serve -s` rewrites all 404s to /index.html (SPA routing).
+# $PORT provided by Railway; fallback for local docker run.
+CMD ["sh", "-c", "serve -s dist -l ${PORT:-5173} --config /app/serve.json"]
