@@ -222,13 +222,27 @@ plus 2 managed datastores. Railway configs live at:
 
 ### Step 1 — Datastores
 
-In your Railway project:
+Both datastores are deployed on Railway itself (no Atlas, no external services).
 
-1. **+ New → Database → Add Redis.** Note the `${{Redis.REDIS_URL}}` reference.
-2. **MongoDB:** Railway doesn't have a native MongoDB plugin. Two choices:
-   - **MongoDB Atlas** (recommended for production) — create a free M0 cluster at
-     <https://mongodb.com/atlas>, get the `mongodb+srv://` URI.
-   - **Railway MongoDB template** — deploy a self-hosted Mongo container.
+1. **Redis** — In the project, **`Cmd+K` → "Add Redis"** (or **+ New → Database → Add Redis**).
+   Exposes `${{Redis.REDIS_URL}}` for other services to reference.
+
+2. **MongoDB** — Deploy the official Mongo template:
+   **`Cmd+K` → "Deploy MongoDB"**, or from <https://railway.com/deploy/mongo>.
+   - Uses the official `mongo` Docker image with start command
+     `mongod --ipv6 --bind_ip ::,0.0.0.0 --setParameter diagnosticDataCollectionEnabled=false`
+     (IPv6 + private networking enabled).
+   - Exposes these env vars for inter-service references:
+     - `${{Mongo.MONGO_URL}}` — full connection string (use this)
+     - `${{Mongo.MONGOHOST}}`, `${{Mongo.MONGOPORT}}`, `${{Mongo.MONGOUSER}}`, `${{Mongo.MONGOPASSWORD}}` — individual parts
+   - **Important:** The template attaches a persistent volume for data. **Deploys to this
+     service will incur downtime** (Railway can't mount the volume twice at once). That's
+     fine for a database — just don't redeploy Mongo casually.
+   - **Backups are NOT automatic.** Enable Railway's native Backups feature in the Mongo
+     service settings before going to production.
+   - The TCP Proxy (external access) is enabled by default but incurs egress charges.
+     Disable it if you don't need to connect from outside Railway — the API/Worker reach
+     Mongo over Railway's private network either way.
 
 ### Step 2 — API service
 
@@ -239,7 +253,7 @@ In your Railway project:
    ```
    NODE_ENV=production
    PORT=3001
-   MONGODB_URI=<your Atlas URI or template ref>
+   MONGODB_URI=${{Mongo.MONGO_URL}}
    REDIS_URL=${{Redis.REDIS_URL}}
    JWT_SECRET=<openssl rand -hex 64>
    JWT_EXPIRES_IN=7d
@@ -248,7 +262,10 @@ In your Railway project:
    ADMIN_EMAIL=admin@example.com
    ADMIN_PASSWORD=<strong password>
    ```
-5. Deploy. Healthcheck hits `/health` — should return 200 within 5 min.
+   Note: if you named your Mongo service something other than `Mongo`, adjust the
+   reference (e.g. `${{champlens-mongo.MONGO_URL}}`).
+5. Deploy. Healthcheck hits `/health` — should return 200 within seconds (the
+   listen-first pattern means the API responds before MongoDB connects).
 
 ### Step 3 — Worker service
 

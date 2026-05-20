@@ -557,11 +557,11 @@ const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
 
 | Layer | Service | Notes |
 |---|---|---|
-| Database | MongoDB Atlas M0 → M10 | Free tier for MVP |
+| Database | MongoDB on Railway (official template) | Self-hosted on Railway; enable native Backups before prod |
 | Video/file storage | MongoDB GridFS (MVP) → Cloudflare R2 | Migrate at 5 GB |
-| Frontend hosting | Vercel | Auto-deploy from git, edge CDN |
-| Backend hosting | Railway | Easy Node.js deploy, persistent workers |
-| Redis | Upstash | Serverless Redis, BullMQ compatible |
+| Frontend hosting | Railway | Same project as API/Worker — single provider |
+| Backend hosting | Railway | API + Worker as separate services, persistent jobs via BullMQ + Redis |
+| Redis | Railway (plugin) | BullMQ-compatible; referenced via ${{Redis.REDIS_URL}} |
 | CDN | Cloudflare | Automatic with R2; manual proxy for GridFS |
 | Email (auth) | Resend | Password reset emails |
 
