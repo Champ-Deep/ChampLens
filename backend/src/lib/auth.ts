@@ -4,23 +4,48 @@ import User, { IUser } from '../models/User'
 
 // Find-or-create the local Mongo User row that mirrors a Clerk user.
 // We sync email + name from Clerk on first hit, then trust the local row.
+//
+// Defensive against: Clerk returning a partial user, races where two requests
+// try to create the same user concurrently (E11000 duplicate key), and the
+// stale email-unique index that may still live on Mongo from the pre-Clerk
+// schema (we now key on clerkUserId; the old email-unique index would 500
+// any second user with the same email — handled by findOneAndUpdate upsert).
 async function syncLocalUser(clerkUserId: string): Promise<IUser> {
   const existing = await User.findOne({ clerkUserId })
   if (existing) return existing
 
-  const clerkUser = await clerkClient.users.getUser(clerkUserId)
+  let clerkUser
+  try {
+    clerkUser = await clerkClient.users.getUser(clerkUserId)
+  } catch (err) {
+    throw new Error(`Clerk getUser(${clerkUserId}) failed: ${(err as Error).message}`)
+  }
+
+  const emails = clerkUser.emailAddresses ?? []
   const primaryEmail =
-    clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)?.emailAddress ??
-    clerkUser.emailAddresses[0]?.emailAddress ??
+    emails.find((e) => e.id === clerkUser.primaryEmailAddressId)?.emailAddress ??
+    emails[0]?.emailAddress ??
     `${clerkUserId}@no-email.local`
 
-  return User.create({
-    clerkUserId,
-    email: primaryEmail.toLowerCase(),
-    name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') || clerkUser.username || primaryEmail,
-    plan: 'free',
-    isActive: true,
-  })
+  const nameParts = [clerkUser.firstName, clerkUser.lastName].filter(Boolean)
+  const name = nameParts.join(' ') || clerkUser.username || primaryEmail
+
+  // Upsert by clerkUserId so concurrent first-hits collapse to one document
+  // instead of 500ing on duplicate-key.
+  const upserted = await User.findOneAndUpdate(
+    { clerkUserId },
+    {
+      $setOnInsert: {
+        clerkUserId,
+        email: primaryEmail.toLowerCase(),
+        name,
+        plan: 'free',
+        isActive: true,
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  )
+  return upserted as IUser
 }
 
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
@@ -43,8 +68,9 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
     ;(req as any).user = user
     ;(req as any).clerkUserId = userId
   } catch (err) {
-    req.log.error({ err, userId }, 'Failed to sync local user from Clerk')
-    return reply.code(500).send({ message: 'Failed to load user' })
+    // Log the full stack so the actual cause shows up in Railway's deploy log.
+    req.log.error({ err: (err as Error).message, stack: (err as Error).stack, userId }, 'syncLocalUser failed')
+    return reply.code(500).send({ message: 'Failed to load user', detail: (err as Error).message })
   }
 }
 

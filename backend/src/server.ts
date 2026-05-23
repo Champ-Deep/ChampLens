@@ -82,6 +82,21 @@ app.register(websocket)
 const uploadsDir = path.join(__dirname, '..', 'uploads')
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
 
+// ── Error handler ─────────────────────────────────────────────────────────────
+// Fastify swallows error stacks in production by default; surface them in logs
+// AND echo the message in the response body so 500s aren't opaque in the browser.
+app.setErrorHandler((error, req, reply) => {
+  req.log.error(
+    { err: error.message, stack: error.stack, url: req.url, method: req.method },
+    'route handler threw'
+  )
+  const status = (error as any).statusCode && (error as any).statusCode >= 400 ? (error as any).statusCode : 500
+  reply.code(status).send({
+    message: error.message ?? 'Internal Server Error',
+    code: (error as any).code,
+  })
+})
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 app.register(authRoutes, { prefix: '/api/auth' })
