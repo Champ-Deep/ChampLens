@@ -24,7 +24,15 @@ async function syncLocalUser(clerkUserId: string): Promise<IUser> {
 }
 
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
-  const { userId } = getAuth(req)
+  let userId: string | null | undefined
+  try {
+    userId = getAuth(req).userId
+  } catch (err) {
+    // getAuth throws if clerkPlugin wasn't registered (e.g. env vars missing).
+    // Surface that as 503 so the misconfig is obvious instead of a generic 500.
+    req.log.error({ err }, 'getAuth threw — is CLERK_SECRET_KEY set and clerkPlugin registered?')
+    return reply.code(503).send({ message: 'Auth not configured on the server.' })
+  }
   if (!userId) {
     return reply.code(401).send({ message: 'Unauthorized' })
   }

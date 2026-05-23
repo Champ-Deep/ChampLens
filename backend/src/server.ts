@@ -47,10 +47,21 @@ app.register(cors, {
 
 // Clerk plugin — verifies the Bearer session token sent by the frontend
 // and exposes getAuth(req) for route handlers and preHandlers.
-app.register(clerkPlugin, {
-  publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
-  secretKey: process.env.CLERK_SECRET_KEY,
-})
+//
+// Gated on env vars: Fastify loads registered plugins as part of `app.listen()`.
+// If Clerk throws during init (missing keys, network blip fetching JWKS), listen
+// rejects and the process exits before binding the port — Railway's healthcheck
+// then sees connection refused and the deploy fails. Skipping registration when
+// keys are absent keeps /health responsive while making the misconfig obvious in
+// logs. Auth routes will 503 in that state (see lib/auth.ts).
+if (process.env.CLERK_SECRET_KEY) {
+  app.register(clerkPlugin, {
+    publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+    secretKey: process.env.CLERK_SECRET_KEY,
+  })
+} else {
+  app.log.warn('CLERK_SECRET_KEY not set — Clerk plugin skipped; /api auth routes will 503 until configured')
+}
 
 app.register(rateLimit, {
   global: true,
