@@ -284,12 +284,12 @@ inside the API container — Railway expects one process per service.
    NODE_ENV=production
    MONGODB_URI=${{Mongo.MONGO_URL}}
    REDIS_URL=${{Redis.REDIS_URL}}
-   CLERK_SECRET_KEY=sk_test_...
    FRONTEND_URL=https://<frontend-service>.up.railway.app
    FILE_BASE_URL=https://<champlens-api>.up.railway.app/files
    LOGO_PATH=/app/src/assets/qr-logo.jpeg
    ```
-   The worker doesn't serve HTTP, so it doesn't need `CLERK_PUBLISHABLE_KEY`.
+   The worker does NOT need Clerk variables — it doesn't serve HTTP and never
+   verifies auth tokens. It just runs BullMQ jobs against Mongo + Redis.
 6. Deploy.
 
 ### Step 4 — Frontend service
