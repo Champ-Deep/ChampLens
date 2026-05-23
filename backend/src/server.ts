@@ -1,11 +1,11 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
-import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
 import websocket from '@fastify/websocket'
+import { clerkPlugin } from '@clerk/fastify'
 import mongoose from 'mongoose'
 import path from 'path'
 import fs from 'fs'
@@ -15,7 +15,6 @@ import cardRoutes from './routes/cards'
 import analyticsRoutes from './routes/analytics'
 import fileRoutes from './routes/files'
 import adminRoutes from './routes/admin'
-import { seedAdmin } from './lib/seedAdmin'
 import { registerWsClient } from './lib/wsEmitter'
 
 const app = Fastify({ logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' } })
@@ -46,7 +45,12 @@ app.register(cors, {
   credentials: true,
 })
 
-app.register(cookie, { secret: process.env.JWT_SECRET ?? 'dev-secret' })
+// Clerk plugin — verifies the Bearer session token sent by the frontend
+// and exposes getAuth(req) for route handlers and preHandlers.
+app.register(clerkPlugin, {
+  publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+  secretKey: process.env.CLERK_SECRET_KEY,
+})
 
 app.register(rateLimit, {
   global: true,
@@ -114,7 +118,6 @@ const start = async () => {
       try {
         await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 10_000 })
         app.log.info('MongoDB connected')
-        try { await seedAdmin() } catch (err) { app.log.error({ err }, 'seedAdmin failed') }
         return
       } catch (err) {
         app.log.error({ err, attempt }, 'MongoDB connection failed; retrying in 10s')

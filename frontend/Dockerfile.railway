@@ -13,10 +13,13 @@ COPY . .
 
 # Build args injected at build time by Railway service settings.
 # VITE_API_URL must be the public URL of the ChampLens API service.
+# VITE_CLERK_PUBLISHABLE_KEY is required — Clerk cannot initialize without it.
 ARG VITE_API_URL=""
 ARG VITE_APP_NAME=ChampLens
+ARG VITE_CLERK_PUBLISHABLE_KEY=""
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_APP_NAME=$VITE_APP_NAME
+ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 
 RUN npm run build
 

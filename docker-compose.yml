@@ -114,6 +114,7 @@ services:
       args:
         VITE_API_URL: ""
         VITE_APP_NAME: ChampLens
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
     container_name: champlens-frontend
     restart: unless-stopped
     ports:

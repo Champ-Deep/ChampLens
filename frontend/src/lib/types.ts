@@ -1,19 +1,20 @@
+// User identity (name, email, role) lives in Clerk — read it via useUser().
+// This type is only the local Mongo mirror returned by GET /api/auth/me.
 export interface User {
   _id: string
+  clerkUserId: string
   email: string
   name: string
   plan: 'free' | 'pro' | 'business'
-  role: 'admin' | 'user'
   isActive: boolean
-  createdAt: string
 }
 
 export interface AdminUser {
   _id: string
+  clerkUserId: string
   email: string
   name: string
   plan: 'free' | 'pro' | 'business'
-  role: 'admin' | 'user'
   isActive: boolean
   cardCount: number
   createdAt: string

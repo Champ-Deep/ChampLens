@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Pencil, Trash2, ShieldCheck, User, ToggleLeft, ToggleRight, X, AlertCircle } from 'lucide-react'
+import { Pencil, Trash2, User, ToggleLeft, ToggleRight, X, AlertCircle } from 'lucide-react'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Spinner from '@/components/ui/Spinner'
 import api from '@/lib/api'
@@ -9,25 +9,17 @@ import type { AdminUser } from '@/lib/types'
 
 const PLANS = ['free', 'pro', 'business'] as const
 
-interface UserFormData {
-  name: string
-  email: string
-  password: string
-  plan: string
-}
-
-const emptyForm: UserFormData = { name: '', email: '', password: '', plan: 'free' }
-
+// User identities (email, name, password, roles) live in Clerk. This page only
+// edits the local Mongo mirror — `plan` and `isActive`. To create or fully
+// remove a user, use the Clerk dashboard at https://dashboard.clerk.com.
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Modal state
-  const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null)
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null)
-  const [form, setForm] = useState<UserFormData>(emptyForm)
+  const [editPlan, setEditPlan] = useState<typeof PLANS[number]>('free')
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -45,34 +37,21 @@ export default function AdminUsersPage() {
 
   useEffect(() => { fetchUsers() }, [])
 
-  const openCreate = () => {
-    setForm(emptyForm)
-    setFormError('')
-    setEditTarget(null)
-    setModalMode('create')
-  }
-
   const openEdit = (u: AdminUser) => {
-    setForm({ name: u.name, email: u.email, password: '', plan: u.plan })
-    setFormError('')
     setEditTarget(u)
-    setModalMode('edit')
+    setEditPlan(u.plan)
+    setFormError('')
   }
 
-  const closeModal = () => { setModalMode(null); setEditTarget(null) }
+  const closeModal = () => setEditTarget(null)
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!editTarget) return
     setFormError('')
     setSaving(true)
     try {
-      if (modalMode === 'create') {
-        await api.post('/admin/users', form)
-      } else if (editTarget) {
-        const payload: Record<string, string> = { name: form.name, email: form.email, plan: form.plan }
-        if (form.password) payload.password = form.password
-        await api.patch(`/admin/users/${editTarget._id}`, payload)
-      }
+      await api.patch(`/admin/users/${editTarget._id}`, { plan: editPlan })
       closeModal()
       fetchUsers()
     } catch (err: any) {
@@ -92,7 +71,7 @@ export default function AdminUsersPage() {
   }
 
   const handleDelete = async (u: AdminUser) => {
-    if (!confirm(`Delete "${u.name}"? Their cards will be reassigned to admin.`)) return
+    if (!confirm(`Delete local record for "${u.name}"? Their cards will be reassigned to admin. (To remove the Clerk account too, do it in the Clerk dashboard.)`)) return
     try {
       await api.delete(`/admin/users/${u._id}`)
       setUsers((prev) => prev.filter((x) => x._id !== u._id))
@@ -104,14 +83,12 @@ export default function AdminUsersPage() {
 
   return (
     <DashboardLayout>
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold mb-1">Users</h1>
-          <p className="text-text-secondary text-sm">{total} account{total !== 1 ? 's' : ''} total</p>
-        </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2 text-sm">
-          <Plus className="w-4 h-4" /> New User
-        </button>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold mb-1">Users</h1>
+        <p className="text-text-secondary text-sm">
+          {total} account{total !== 1 ? 's' : ''} · Manage sign-ups, emails, and passwords in the{' '}
+          <a href="https://dashboard.clerk.com" target="_blank" rel="noreferrer" className="text-accent hover:underline">Clerk dashboard</a>.
+        </p>
       </div>
 
       {error && (
@@ -145,10 +122,7 @@ export default function AdminUsersPage() {
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {u.role === 'admin'
-                        ? <ShieldCheck className="w-4 h-4 text-accent shrink-0" />
-                        : <User className="w-4 h-4 text-text-secondary shrink-0" />
-                      }
+                      <User className="w-4 h-4 text-text-secondary shrink-0" />
                       <div className="min-w-0">
                         <p className="font-medium truncate">{u.name}</p>
                         <p className="text-xs text-text-secondary truncate">{u.email}</p>
@@ -163,9 +137,7 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <button
                       onClick={() => toggleActive(u)}
-                      disabled={u.role === 'admin'}
-                      title={u.role === 'admin' ? 'Cannot disable admin' : u.isActive ? 'Disable account' : 'Enable account'}
-                      className="disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={u.isActive ? 'Disable account' : 'Enable account'}
                     >
                       {u.isActive
                         ? <ToggleRight className="w-5 h-5 text-status-ready" />
@@ -178,17 +150,17 @@ export default function AdminUsersPage() {
                       <button
                         onClick={() => openEdit(u)}
                         className="p-1.5 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+                        title="Change plan"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      {u.role !== 'admin' && (
-                        <button
-                          onClick={() => handleDelete(u)}
-                          className="p-1.5 rounded text-text-secondary hover:text-status-error hover:bg-status-error/10 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleDelete(u)}
+                        className="p-1.5 rounded text-text-secondary hover:text-status-error hover:bg-status-error/10 transition-colors"
+                        title="Delete local record"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </td>
                 </motion.tr>
@@ -196,14 +168,13 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
           {users.length === 0 && (
-            <p className="text-center text-text-secondary py-12 text-sm">No users yet. Create one above.</p>
+            <p className="text-center text-text-secondary py-12 text-sm">No users have signed up yet.</p>
           )}
         </div>
       )}
 
-      {/* Create / Edit Modal */}
       <AnimatePresence>
-        {modalMode && (
+        {editTarget && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -218,7 +189,7 @@ export default function AdminUsersPage() {
               className="panel p-6 w-full max-w-md"
             >
               <div className="flex items-center justify-between mb-5">
-                <h2 className="font-semibold text-lg">{modalMode === 'create' ? 'New User' : 'Edit User'}</h2>
+                <h2 className="font-semibold text-lg">Change plan — {editTarget.name}</h2>
                 <button onClick={closeModal} className="text-text-secondary hover:text-text-primary">
                   <X className="w-4 h-4" />
                 </button>
@@ -226,44 +197,10 @@ export default function AdminUsersPage() {
 
               <form onSubmit={handleSave} className="space-y-4">
                 <div>
-                  <label className="block text-xs text-text-secondary mb-1.5">Full Name *</label>
-                  <input
-                    required
-                    value={form.name}
-                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    placeholder="Jane Smith"
-                    className="input-field"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1.5">Email *</label>
-                  <input
-                    required
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                    placeholder="jane@example.com"
-                    className="input-field"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1.5">
-                    Password {modalMode === 'edit' && <span className="text-text-disabled">(leave blank to keep current)</span>}
-                  </label>
-                  <input
-                    required={modalMode === 'create'}
-                    type="password"
-                    value={form.password}
-                    onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                    placeholder="Min 8 characters"
-                    className="input-field"
-                  />
-                </div>
-                <div>
                   <label className="block text-xs text-text-secondary mb-1.5">Plan</label>
                   <select
-                    value={form.plan}
-                    onChange={(e) => setForm((f) => ({ ...f, plan: e.target.value }))}
+                    value={editPlan}
+                    onChange={(e) => setEditPlan(e.target.value as typeof PLANS[number])}
                     className="input-field"
                   >
                     {PLANS.map((p) => (
@@ -282,7 +219,7 @@ export default function AdminUsersPage() {
                   </button>
                   <button type="submit" disabled={saving} className="btn-primary flex-1 flex items-center justify-center gap-2">
                     {saving && <Spinner size="sm" />}
-                    {modalMode === 'create' ? 'Create' : 'Save'}
+                    Save
                   </button>
                 </div>
               </form>

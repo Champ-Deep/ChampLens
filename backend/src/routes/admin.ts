@@ -1,15 +1,14 @@
 import { FastifyInstance } from 'fastify'
-import bcrypt from 'bcryptjs'
-import fs from 'fs'
 import User from '../models/User'
 import Card from '../models/Card'
 import Scan from '../models/Scan'
 import { requireAdmin } from '../lib/auth'
-import { getLocalPath } from '../lib/storage'
 
+// Admin user management — note that user create/delete/password operations
+// happen in the Clerk dashboard, not here. This module only edits the local
+// Mongo mirror of users (plan, isActive) and exposes aggregate stats.
 export default async function adminRoutes(app: FastifyInstance) {
-
-  // List all users with card count
+  // List users with card counts
   app.get('/users', { preHandler: requireAdmin }, async (req) => {
     const { page = '1', limit = '50' } = req.query as any
     const skip = (Number(page) - 1) * Number(limit)
@@ -29,10 +28,10 @@ export default async function adminRoutes(app: FastifyInstance) {
     return {
       users: users.map((u) => ({
         _id: u._id,
+        clerkUserId: u.clerkUserId,
         email: u.email,
         name: u.name,
         plan: u.plan,
-        role: u.role,
         isActive: u.isActive,
         cardCount: cardMap[String(u._id)] ?? 0,
         createdAt: u.createdAt,
@@ -42,65 +41,31 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   })
 
-  // Create user (admin only)
-  app.post('/users', { preHandler: requireAdmin }, async (req, reply) => {
-    const { name, email, password, plan = 'free' } = req.body as any
-    if (!name || !email || !password) return reply.code(400).send({ message: 'name, email and password are required.' })
-    if (password.length < 8) return reply.code(400).send({ message: 'Password must be at least 8 characters.' })
-
-    const existing = await User.findOne({ email: email.toLowerCase() })
-    if (existing) return reply.code(409).send({ message: 'An account with this email already exists.' })
-
-    const passwordHash = await bcrypt.hash(password, 12)
-    const user = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase(),
-      passwordHash,
-      plan,
-      role: 'user',
-      isActive: true,
-    })
-
-    return reply.code(201).send({
-      user: { _id: user._id, email: user.email, name: user.name, plan: user.plan, role: user.role, isActive: user.isActive },
-    })
-  })
-
-  // Update user
+  // Update local user record. Email/name/password live in Clerk —
+  // update those in the Clerk dashboard.
   app.patch('/users/:id', { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = req.params as any
-    const { name, email, password, plan, isActive } = req.body as any
+    const { plan, isActive } = req.body as any
     const admin = (req as any).user
 
-    // Prevent admin from disabling their own account
     if (String(admin._id) === id && isActive === false) {
       return reply.code(400).send({ message: 'You cannot disable your own admin account.' })
     }
 
     const updates: Record<string, any> = {}
-    if (name !== undefined) updates.name = name.trim()
-    if (email !== undefined) updates.email = email.toLowerCase()
     if (plan !== undefined) updates.plan = plan
     if (isActive !== undefined) updates.isActive = isActive
-    if (password !== undefined) {
-      if (password.length < 8) return reply.code(400).send({ message: 'Password must be at least 8 characters.' })
-      updates.passwordHash = await bcrypt.hash(password, 12)
-    }
-
-    if (email !== undefined) {
-      const conflict = await User.findOne({ email: email.toLowerCase(), _id: { $ne: id } })
-      if (conflict) return reply.code(409).send({ message: 'Email already in use.' })
-    }
 
     const user = await User.findByIdAndUpdate(id, { $set: updates }, { new: true }).lean()
     if (!user) return reply.code(404).send({ message: 'User not found.' })
 
     return {
-      user: { _id: user._id, email: user.email, name: user.name, plan: user.plan, role: user.role, isActive: user.isActive },
+      user: { _id: user._id, email: user.email, name: user.name, plan: user.plan, isActive: user.isActive },
     }
   })
 
-  // Delete user — reassign cards to admin, then delete user
+  // Delete local user record + reassign their cards. The Clerk user is NOT
+  // deleted — manage that separately in the Clerk dashboard if needed.
   app.delete('/users/:id', { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = req.params as any
     const admin = (req as any).user
@@ -112,18 +77,16 @@ export default async function adminRoutes(app: FastifyInstance) {
     const target = await User.findById(id)
     if (!target) return reply.code(404).send({ message: 'User not found.' })
 
-    // Reassign all cards to admin
     await Card.updateMany({ userId: id }, { $set: { userId: admin._id } })
-
     await User.findByIdAndDelete(id)
 
-    return reply.code(200).send({ message: `User deleted. Their cards have been reassigned to admin.` })
+    return reply.code(200).send({ message: 'Local user deleted. Cards reassigned to admin. Delete the Clerk user separately if needed.' })
   })
 
   // Platform-wide stats
   app.get('/stats', { preHandler: requireAdmin }, async () => {
     const [totalUsers, totalCards, totalScans] = await Promise.all([
-      User.countDocuments({ role: 'user' }),
+      User.countDocuments(),
       Card.countDocuments(),
       Scan.countDocuments(),
     ])

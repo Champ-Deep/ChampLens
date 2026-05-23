@@ -1,19 +1,24 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { LayoutGrid, Plus, LogOut, QrCode, Users, BarChart3, ShieldCheck } from 'lucide-react'
-import { useAuthStore } from '@/store/auth'
-import api from '@/lib/api'
+import { useUser, useClerk } from '@clerk/clerk-react'
 
 interface Props { children: React.ReactNode }
 
 export default function DashboardLayout({ children }: Props) {
-  const { user, isAdmin, clearAuth } = useAuthStore()
+  const { user } = useUser()
+  const { signOut } = useClerk()
   const location = useLocation()
   const navigate = useNavigate()
 
+  const role = (user?.publicMetadata as { role?: string })?.role
+  const isAdmin = role === 'admin'
+
+  const name = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || ''
+  const email = user?.primaryEmailAddress?.emailAddress ?? ''
+
   const handleLogout = async () => {
-    await api.post('/auth/logout').catch(() => {})
-    clearAuth()
+    await signOut()
     navigate('/login')
   }
 
@@ -28,7 +33,6 @@ export default function DashboardLayout({ children }: Props) {
 
   return (
     <div className="min-h-screen bg-bg-base flex">
-      {/* Sidebar */}
       <aside className="w-56 bg-bg-surface border-r border-border flex flex-col shrink-0">
         <div className="p-5 border-b border-border">
           <Link to="/dashboard" className="flex items-center gap-2">
@@ -60,10 +64,10 @@ export default function DashboardLayout({ children }: Props) {
         <div className="p-3 border-t border-border">
           <div className="px-3 py-2 mb-1">
             <div className="flex items-center gap-1.5 mb-0.5">
-              <p className="text-xs font-medium text-text-primary truncate">{user?.name}</p>
+              <p className="text-xs font-medium text-text-primary truncate">{name}</p>
               {isAdmin && <ShieldCheck className="w-3 h-3 text-accent shrink-0" aria-label="Admin" />}
             </div>
-            <p className="text-xs text-text-secondary truncate">{user?.email}</p>
+            <p className="text-xs text-text-secondary truncate">{email}</p>
           </div>
           <button
             onClick={handleLogout}
@@ -75,7 +79,6 @@ export default function DashboardLayout({ children }: Props) {
         </div>
       </aside>
 
-      {/* Main */}
       <main className="flex-1 overflow-auto">
         <motion.div
           initial={{ opacity: 0, y: 8 }}

@@ -64,15 +64,16 @@ Edit `.env.docker.local` — **minimum required changes:**
 ```env
 MONGO_INITDB_ROOT_PASSWORD=your_strong_mongo_password
 REDIS_PASSWORD=your_strong_redis_password
-JWT_SECRET=a_random_64_char_string_go_generate_one_now
 FRONTEND_URL=http://your-domain.com
 FILE_BASE_URL=http://your-domain.com/files
+CLERK_PUBLISHABLE_KEY=pk_test_...      # from clerk.com → API Keys
+CLERK_SECRET_KEY=sk_test_...           # from clerk.com → API Keys
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_... # same publishable key — baked into the SPA bundle
 ```
 
-Generate a strong JWT secret:
-```bash
-openssl rand -hex 64
-```
+Auth runs entirely on Clerk — no JWT secret, no bcrypt, no local password storage. Sign up
+at <https://clerk.com>, create a ChampLens app, and grab the publishable + secret keys from
+the API Keys page.
 
 ### 3. Add Champions Group logo
 
@@ -180,11 +181,12 @@ champlens-redis        Up (healthy)
 | `MONGO_INITDB_ROOT_USERNAME` | Yes | `champlens` | MongoDB root user |
 | `MONGO_INITDB_ROOT_PASSWORD` | **Yes** | — | MongoDB root password |
 | `REDIS_PASSWORD` | **Yes** | — | Redis password |
-| `JWT_SECRET` | **Yes** | — | JWT signing secret (min 32 chars) |
-| `JWT_EXPIRES_IN` | No | `7d` | JWT token lifetime |
+| `CLERK_PUBLISHABLE_KEY` | **Yes** | — | Clerk publishable key (`pk_test_...` / `pk_live_...`) — backend uses it to verify JWTs |
+| `CLERK_SECRET_KEY` | **Yes** | — | Clerk secret key (`sk_test_...` / `sk_live_...`) — backend only |
+| `VITE_CLERK_PUBLISHABLE_KEY` | **Yes** | — | Same publishable key — must be a **Build Arg** so Vite bakes it into the SPA bundle |
 | `FRONTEND_URL` | Yes | `http://localhost` | Public URL of the frontend |
 | `FILE_BASE_URL` | Yes | `http://localhost/files` | Public base URL for file downloads |
-| `LOGO_PATH` | No | `/app/src/assets/champions-ranch-logo.png` | Path to Champions Group logo inside container |
+| `LOGO_PATH` | No | `/app/src/assets/qr-logo.jpeg` | Path to Champions Group logo inside container |
 | `RESEND_API_KEY` | No | — | Password reset emails (Phase 2) |
 | `OPENROUTER_API_KEY` | No | — | AI video analysis (Phase 2) |
 
@@ -252,18 +254,16 @@ Both datastores are deployed on Railway itself (no Atlas, no external services).
 4. Settings → **Variables:** set
    ```
    NODE_ENV=production
-   PORT=3001
    MONGODB_URI=${{Mongo.MONGO_URL}}
    REDIS_URL=${{Redis.REDIS_URL}}
-   JWT_SECRET=<openssl rand -hex 64>
-   JWT_EXPIRES_IN=7d
+   CLERK_PUBLISHABLE_KEY=pk_test_...   # from clerk.com → API Keys
+   CLERK_SECRET_KEY=sk_test_...        # from clerk.com → API Keys
    FRONTEND_URL=https://<frontend-service>.up.railway.app
    FILE_BASE_URL=https://<this-service>.up.railway.app/files
-   ADMIN_EMAIL=admin@example.com
-   ADMIN_PASSWORD=<strong password>
    ```
    Note: if you named your Mongo service something other than `Mongo`, adjust the
-   reference (e.g. `${{champlens-mongo.MONGO_URL}}`).
+   reference (e.g. `${{champlens-mongo.MONGO_URL}}`). Do NOT set `PORT` — Railway
+   injects it.
 5. Deploy. Healthcheck hits `/health` — should return 200 within seconds (the
    listen-first pattern means the API responds before MongoDB connects).
 
@@ -279,8 +279,17 @@ inside the API container — Railway expects one process per service.
    ```
    sh -c 'node dist/workers/index.js'
    ```
-5. Settings → **Variables:** copy ALL the same variables as the API service
-   (worker needs MongoDB, Redis, FILE_BASE_URL, JWT_SECRET, etc.)
+5. Settings → **Variables:** copy these from the API service:
+   ```
+   NODE_ENV=production
+   MONGODB_URI=${{Mongo.MONGO_URL}}
+   REDIS_URL=${{Redis.REDIS_URL}}
+   CLERK_SECRET_KEY=sk_test_...
+   FRONTEND_URL=https://<frontend-service>.up.railway.app
+   FILE_BASE_URL=https://<champlens-api>.up.railway.app/files
+   LOGO_PATH=/app/src/assets/qr-logo.jpeg
+   ```
+   The worker doesn't serve HTTP, so it doesn't need `CLERK_PUBLISHABLE_KEY`.
 6. Deploy.
 
 ### Step 4 — Frontend service
@@ -292,8 +301,11 @@ inside the API container — Railway expects one process per service.
    ```
    VITE_API_URL=https://<champlens-api>.up.railway.app
    VITE_APP_NAME=ChampLens
+   VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
    ```
-   *(Vite bakes env vars into the JS bundle at BUILD time — runtime env vars are ignored.)*
+   *(Vite bakes env vars into the JS bundle at BUILD time — runtime env vars are ignored.
+   The Clerk **publishable** key is safe to ship to the browser; never put the **secret**
+   key as a build arg.)*
 5. Settings → **Networking:** Generate a public domain
 6. Deploy.
 
@@ -313,6 +325,20 @@ curl -s https://<champlens-frontend>.up.railway.app/ | grep -oE 'assets/[^"]+\.j
 # fetch that JS file and grep for your API URL
 ```
 
+### Step 6 — Promote yourself to admin in Clerk
+
+Admin role lives in Clerk's `publicMetadata`, not in Mongo. After you sign up via the SPA:
+
+1. Open <https://dashboard.clerk.com> → your app → Users → click yourself
+2. Scroll to **Metadata → Public** → Edit
+3. Set:
+   ```json
+   { "role": "admin" }
+   ```
+4. Save. Sign out + back in on the SPA — `/admin/users` and `/admin/stats` will unlock.
+
+Repeat for any other admin. To revoke, set `role` to anything else or remove the key.
+
 ### Common Railway gotchas
 
 - **`Invalid value for '--port': '$PORT'`** — start command must wrap in `sh -c` so the
@@ -324,6 +350,11 @@ curl -s https://<champlens-frontend>.up.railway.app/ | grep -oE 'assets/[^"]+\.j
 - **CORS errors** — the API's `cors` registration reads `FRONTEND_URL`. Set it to your
   frontend's public Railway URL (comma-separate multiple origins if you also use a custom
   domain).
+- **`VITE_CLERK_PUBLISHABLE_KEY is not set` error in browser console** — set it as a Build
+  Arg on the frontend service (not a Variable). Rebuild after adding.
+- **`401 Unauthorized` on every API call** — backend has `CLERK_SECRET_KEY` unset or wrong,
+  OR the frontend isn't sending the Bearer token. Check the request's `Authorization`
+  header in DevTools.
 
 For deeper troubleshooting see <https://docs.railway.com/deployments/healthchecks>.
 

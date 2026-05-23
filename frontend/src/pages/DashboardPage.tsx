@@ -5,12 +5,13 @@ import DashboardLayout from '@/components/layout/DashboardLayout'
 import CardGrid from '@/components/dashboard/CardGrid'
 import Spinner from '@/components/ui/Spinner'
 import api from '@/lib/api'
-import { useAuthStore } from '@/store/auth'
+import { useUser } from '@clerk/clerk-react'
 import { useSocket } from '@/hooks/useSocket'
 import type { Card } from '@/lib/types'
 
 export default function DashboardPage() {
-  const { user } = useAuthStore()
+  const { user } = useUser()
+  const displayName = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress?.split('@')[0]
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(true)
   const ws = useSocket()
@@ -42,7 +43,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">My Cards</h1>
           <p className="text-text-secondary text-sm mt-0.5">
-            {cards.length} card{cards.length !== 1 ? 's' : ''} · Welcome back, {user?.name?.split(' ')[0]}
+            {cards.length} card{cards.length !== 1 ? 's' : ''} · Welcome back, {displayName ?? 'there'}
           </p>
         </div>
         <Link to="/dashboard/create" className="btn-primary flex items-center gap-2">
