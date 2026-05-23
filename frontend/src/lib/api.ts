@@ -30,7 +30,7 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      // Let Clerk handle redirect via <SignedOut> / <RedirectToSignIn />.
+      // Let Clerk handle redirect via <Show when="signed-out"> / <RedirectToSignIn />.
       // No store to clear — Clerk manages session.
       window.location.href = '/login'
     }

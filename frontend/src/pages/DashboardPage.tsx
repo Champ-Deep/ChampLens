@@ -5,7 +5,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout'
 import CardGrid from '@/components/dashboard/CardGrid'
 import Spinner from '@/components/ui/Spinner'
 import api from '@/lib/api'
-import { useUser } from '@clerk/clerk-react'
+import { useUser } from '@clerk/react'
 import { useSocket } from '@/hooks/useSocket'
 import type { Card } from '@/lib/types'
 

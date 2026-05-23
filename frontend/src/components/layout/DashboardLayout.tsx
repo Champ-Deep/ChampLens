@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { LayoutGrid, Plus, LogOut, QrCode, Users, BarChart3, ShieldCheck } from 'lucide-react'
-import { useUser, useClerk } from '@clerk/clerk-react'
+import { useUser, useClerk } from '@clerk/react'
 
 interface Props { children: React.ReactNode }
 

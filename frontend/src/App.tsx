@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
-import { useAuth, useUser, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react'
+import { useAuth, useUser, Show, RedirectToSignIn } from '@clerk/react'
 import { setTokenGetter } from '@/lib/api'
 import LandingPage from '@/pages/LandingPage'
 import LoginPage from '@/pages/LoginPage'
@@ -25,8 +25,8 @@ function ApiAuthBinder() {
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <SignedIn>{children}</SignedIn>
-      <SignedOut><RedirectToSignIn /></SignedOut>
+      <Show when="signed-in">{children}</Show>
+      <Show when="signed-out"><RedirectToSignIn /></Show>
     </>
   )
 }

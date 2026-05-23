@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { QrCode } from 'lucide-react'
-import { SignUp } from '@clerk/clerk-react'
+import { SignUp } from '@clerk/react'
 
 export default function RegisterPage() {
   return (
