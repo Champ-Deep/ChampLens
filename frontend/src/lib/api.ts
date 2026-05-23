@@ -1,8 +1,19 @@
 import axios from 'axios'
 
 // VITE_API_URL is the full origin of the ChampLens API service
-// (e.g. https://champlens-api.up.railway.app). Empty / unset means same-origin.
-const apiOrigin = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+// (e.g. https://champlens-api.up.railway.app). Empty / unset means same-origin
+// (used by docker-compose where nginx proxies /api → backend).
+//
+// We normalize so that bare-hostname inputs ("champlens-api.up.railway.app")
+// don't silently produce a relative URL — axios would otherwise treat that as
+// a path on the current origin and every API call would 404.
+function normalizeOrigin(raw: string | undefined): string {
+  const v = (raw ?? '').trim().replace(/\/+$/, '')
+  if (!v) return ''
+  if (!/^https?:\/\//i.test(v)) return `https://${v}`
+  return v
+}
+const apiOrigin = normalizeOrigin(import.meta.env.VITE_API_URL)
 
 const api = axios.create({
   baseURL: `${apiOrigin}/api`,

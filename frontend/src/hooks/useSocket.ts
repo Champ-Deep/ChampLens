@@ -8,9 +8,15 @@ let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 function getWsUrl() {
-  const apiOrigin = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
-  if (apiOrigin) {
-    return `${apiOrigin.replace(/^http/, 'ws')}/ws`
+  // Tolerate VITE_API_URL with or without protocol prefix. Without this guard,
+  // a bare hostname like "champlens-api.up.railway.app" produces a relative
+  // URL that the browser resolves against the current page — landing at
+  // wss://<frontend>/<api-host>/ws and looping on connect failure.
+  const raw = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '')
+  if (raw) {
+    const isLocal = /^http:\/\//i.test(raw)
+    const host = raw.replace(/^https?:\/\//i, '')
+    return `${isLocal ? 'ws' : 'wss'}://${host}/ws`
   }
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${window.location.host}/ws`
