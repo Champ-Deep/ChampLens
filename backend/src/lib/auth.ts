@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { getAuth, clerkClient } from '@clerk/fastify'
+import mongoose from 'mongoose'
 import User, { IUser } from '../models/User'
 
 // Find-or-create the local Mongo User row that mirrors a Clerk user.
@@ -60,6 +61,17 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   }
   if (!userId) {
     return reply.code(401).send({ message: 'Unauthorized' })
+  }
+
+  // Fail fast if Mongo isn't reachable, instead of letting mongoose buffer the
+  // User.findOne() for ~10s and surfacing the timeout as "Failed to load user".
+  // readyState: 0=disconnected, 1=connected, 2=connecting, 3=disconnecting.
+  if (mongoose.connection.readyState !== 1) {
+    req.log.error({ readyState: mongoose.connection.readyState }, 'Mongo not connected — auth check refused')
+    return reply.code(503).send({
+      message: 'Database unavailable. Please try again in a moment.',
+      detail: `MongoDB readyState=${mongoose.connection.readyState} (1=connected). Check MONGODB_URI on the API service.`,
+    })
   }
 
   try {

@@ -138,7 +138,24 @@ const start = async () => {
   await app.listen({ port, host: '0.0.0.0' })
   app.log.info(`Server running on port ${port}`)
 
+  // Loud error if MONGODB_URI is missing in production — silently falling back
+  // to localhost would just produce an endless retry loop with no clear cause.
+  if (!process.env.MONGODB_URI) {
+    if (process.env.NODE_ENV === 'production') {
+      app.log.error(
+        'MONGODB_URI is NOT set. On Railway, set it to ${{Mongo.MONGO_URL}} ' +
+        '(or your Mongo service name, e.g. ${{champlens-mongo.MONGO_URL}}). ' +
+        'Falling back to localhost — this will fail.'
+      )
+    } else {
+      app.log.warn('MONGODB_URI not set; using localhost default')
+    }
+  }
   const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/champlens'
+  // Mask credentials before logging the URI host so we know which Mongo we resolved to.
+  const maskedUri = MONGODB_URI.replace(/\/\/([^@]+)@/, '//***@')
+  app.log.info({ mongo: maskedUri }, 'Connecting to MongoDB')
+
   const connectWithRetry = async () => {
     for (let attempt = 1; ; attempt++) {
       try {
@@ -146,7 +163,7 @@ const start = async () => {
         app.log.info('MongoDB connected')
         return
       } catch (err) {
-        app.log.error({ err, attempt }, 'MongoDB connection failed; retrying in 10s')
+        app.log.error({ err: (err as Error).message, attempt }, 'MongoDB connection failed; retrying in 10s')
         await new Promise((r) => setTimeout(r, 10_000))
       }
     }

@@ -40,6 +40,14 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    // Backend 5xx responses carry a `detail` field with the actual root cause
+    // (mongoose error, Clerk failure, etc.). Components only show `message` —
+    // log `detail` to the console so it's reachable in DevTools without
+    // muddying user-facing copy.
+    const detail = err.response?.data?.detail
+    if (detail) {
+      console.error('[ChampLens API]', err.response.status, err.config?.method?.toUpperCase(), err.config?.url, '—', detail)
+    }
     if (err.response?.status === 401) {
       // Let Clerk handle redirect via <Show when="signed-out"> / <RedirectToSignIn />.
       // No store to clear — Clerk manages session.
