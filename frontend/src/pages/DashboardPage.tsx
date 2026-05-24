@@ -39,14 +39,14 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="flex items-center justify-between mb-8">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">My Cards</h1>
           <p className="text-text-secondary text-sm mt-0.5">
             {cards.length} card{cards.length !== 1 ? 's' : ''} · Welcome back, {displayName ?? 'there'}
           </p>
         </div>
-        <Link to="/dashboard/create" className="btn-primary flex items-center gap-2">
+        <Link to="/dashboard/create" className="btn-primary flex items-center justify-center gap-2 shrink-0">
           <Plus className="w-4 h-4" />
           New Card
         </Link>

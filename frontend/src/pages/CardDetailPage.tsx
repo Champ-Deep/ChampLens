@@ -80,9 +80,9 @@ export default function CardDetailPage() {
     <DashboardLayout>
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
         {/* Header */}
-        <div className="flex items-start justify-between mb-8 gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-8 gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-3 mb-1">
               <h1 className="text-2xl font-bold">{card.ownerName}</h1>
               <StatusBadge status={card.status} />
             </div>
@@ -90,7 +90,7 @@ export default function CardDetailPage() {
               {card.ownerTitle}{card.company ? ` · ${card.company}` : ''} · Created {formatDate(card.createdAt)}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <a href={previewUrl} target="_blank" rel="noreferrer" className="btn-ghost flex items-center gap-2 text-sm">
               <ExternalLink className="w-4 h-4" />
               Preview
