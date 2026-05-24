@@ -6,11 +6,22 @@ import User, { IUser } from '../models/User'
 // Find-or-create the local Mongo User row that mirrors a Clerk user.
 // We sync email + name from Clerk on first hit, then trust the local row.
 //
-// Defensive against: Clerk returning a partial user, races where two requests
-// try to create the same user concurrently (E11000 duplicate key), and the
-// stale email-unique index that may still live on Mongo from the pre-Clerk
-// schema (we now key on clerkUserId; the old email-unique index would 500
-// any second user with the same email — handled by findOneAndUpdate upsert).
+// Defensive against three failure modes that have all bitten this codepath:
+//   1. Concurrent first-hits for the same clerkUserId — two parallel requests
+//      both findOne→null and both attempt insert. The clerkUserId unique index
+//      makes the loser throw E11000; we resolve by re-reading the winner's row.
+//   2. Stale email-unique index from the pre-Clerk schema. The new schema only
+//      declares `clerkUserId` unique, but Mongo retains old indexes until
+//      dropped. If a doc with this email already exists (e.g. a pre-Clerk row,
+//      or the user signed up twice under different Clerk identities), the
+//      insert hits E11000 on `email_1`. We adopt the existing row by stamping
+//      it with the new clerkUserId.
+//   3. Clerk returning a partial user — fall back through primary email →
+//      first email → synthesized local-only email so the insert never NPEs.
+function isDuplicateKeyError(err: unknown): err is { code: number; keyPattern?: Record<string, number>; keyValue?: Record<string, unknown> } {
+  return !!err && typeof err === 'object' && (err as { code?: number }).code === 11000
+}
+
 async function syncLocalUser(clerkUserId: string): Promise<IUser> {
   const existing = await User.findOne({ clerkUserId })
   if (existing) return existing
@@ -27,26 +38,48 @@ async function syncLocalUser(clerkUserId: string): Promise<IUser> {
     emails.find((e) => e.id === clerkUser.primaryEmailAddressId)?.emailAddress ??
     emails[0]?.emailAddress ??
     `${clerkUserId}@no-email.local`
+  const email = primaryEmail.toLowerCase()
 
   const nameParts = [clerkUser.firstName, clerkUser.lastName].filter(Boolean)
   const name = nameParts.join(' ') || clerkUser.username || primaryEmail
 
-  // Upsert by clerkUserId so concurrent first-hits collapse to one document
-  // instead of 500ing on duplicate-key.
-  const upserted = await User.findOneAndUpdate(
-    { clerkUserId },
-    {
-      $setOnInsert: {
-        clerkUserId,
-        email: primaryEmail.toLowerCase(),
-        name,
-        plan: 'free',
-        isActive: true,
-      },
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  )
-  return upserted as IUser
+  try {
+    const created = await User.create({
+      clerkUserId,
+      email,
+      name,
+      plan: 'free',
+      isActive: true,
+    })
+    return created
+  } catch (err) {
+    if (!isDuplicateKeyError(err)) throw err
+
+    // Concurrent insert race: the other request won. Re-read its row.
+    const raced = await User.findOne({ clerkUserId })
+    if (raced) return raced
+
+    // Stale email-unique index claimed the email. Adopt the orphan row by
+    // stamping it with this clerkUserId so future logins find it by clerkUserId.
+    const byEmail = await User.findOne({ email })
+    if (byEmail) {
+      byEmail.clerkUserId = clerkUserId
+      byEmail.name = name
+      byEmail.isActive = byEmail.isActive ?? true
+      try {
+        await byEmail.save()
+      } catch (saveErr) {
+        if (isDuplicateKeyError(saveErr)) {
+          const resolved = await User.findOne({ clerkUserId })
+          if (resolved) return resolved
+        }
+        throw saveErr
+      }
+      return byEmail
+    }
+
+    throw new Error(`Mongo duplicate-key (E11000) on User insert for clerkUserId=${clerkUserId}, email=${email}. Stale unique index? keys=${JSON.stringify((err as { keyPattern?: unknown }).keyPattern)}`)
+  }
 }
 
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
