@@ -4,7 +4,7 @@ import { transcodeVideo } from './transcode'
 import { generateQR } from './generateQR'
 import { buildPrintPack } from './buildPrintPack'
 import { compileMindARTarget } from './compileMindAR'
-import { emitCardStatus } from '../lib/wsEmitter'
+import { publishCardStatus } from '../lib/wsEmitter'
 
 function getRedisConnection() {
   if (process.env.REDIS_URL) return { url: process.env.REDIS_URL }
@@ -32,7 +32,7 @@ export function startCardWorker() {
         ])
 
         await Card.findByIdAndUpdate(cardId, { videoUrl, thumbnailUrl, qrImageUrl: qrPngUrl })
-        emitCardStatus(cardId, 'processing:transcoded')
+        publishCardStatus(cardId, 'processing:transcoded')
         await job.updateProgress(50)
 
         // Step 3+4: Print pack AND MindAR compile in parallel — saves ~5s
@@ -42,17 +42,17 @@ export function startCardWorker() {
         ])
 
         await Card.findByIdAndUpdate(cardId, { printPackUrl, targetFileUrl })
-        emitCardStatus(cardId, 'processing:ar')
+        publishCardStatus(cardId, 'processing:ar')
         await job.updateProgress(100)
 
         await Card.findByIdAndUpdate(cardId, { status: 'ready', errorMsg: '' })
-        emitCardStatus(cardId, 'ready')
+        publishCardStatus(cardId, 'ready')
         console.log(`[worker] Card ${cardId} ready in ${((Date.now() - t0) / 1000).toFixed(1)}s`)
 
       } catch (err: any) {
         console.error(`[worker] Card ${cardId} failed:`, err.message)
         await Card.findByIdAndUpdate(cardId, { status: 'error', errorMsg: err.message ?? 'Processing failed' })
-        emitCardStatus(cardId, 'error')
+        publishCardStatus(cardId, 'error')
         throw err
       }
     },

@@ -15,7 +15,7 @@ import cardRoutes from './routes/cards'
 import analyticsRoutes from './routes/analytics'
 import fileRoutes from './routes/files'
 import adminRoutes from './routes/admin'
-import { registerWsClient } from './lib/wsEmitter'
+import { registerWsClient, subscribeCardStatus } from './lib/wsEmitter'
 
 const app = Fastify({ logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' } })
 
@@ -137,6 +137,11 @@ const start = async () => {
   const port = Number(process.env.PORT ?? 3001)
   await app.listen({ port, host: '0.0.0.0' })
   app.log.info(`Server running on port ${port}`)
+
+  // Subscribe to the cross-process card-status channel so updates emitted by
+  // the worker (separate Railway service) reach this API's WebSocket clients.
+  // Non-blocking — Redis connection is established lazily and retries on its own.
+  subscribeCardStatus()
 
   // Loud error if MONGODB_URI is missing in production — silently falling back
   // to localhost would just produce an endless retry loop with no clear cause.
