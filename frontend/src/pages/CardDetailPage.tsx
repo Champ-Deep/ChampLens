@@ -51,6 +51,15 @@ export default function CardDetailPage() {
     return () => { ws.off('card:status', handler) }
   }, [id])
 
+  // Polling fallback: WS pub/sub is at-most-once, so if the `ready` event drops
+  // the spinner would spin forever. While the card is still processing, refetch
+  // every 5s. Stops automatically once status becomes terminal ('ready' / 'error').
+  useEffect(() => {
+    if (card?.status !== 'processing') return
+    const interval = setInterval(fetchAll, 5000)
+    return () => clearInterval(interval)
+  }, [card?.status, id])
+
   const handleDelete = async () => {
     if (!confirm('Delete this card? The QR code will stop working immediately.')) return
     setDeleting(true)

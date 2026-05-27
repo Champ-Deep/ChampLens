@@ -29,13 +29,30 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const handler = (payload: { cardId: string; status: Card['status'] }) => {
-      setCards((prev) =>
-        prev.map((c) => c._id === payload.cardId ? { ...c, status: payload.status as Card['status'] } : c)
-      )
+      setCards((prev) => {
+        // If the message references a card we don't have (e.g. created in
+        // another tab), pull a fresh list rather than silently dropping it.
+        if (!prev.some((c) => c._id === payload.cardId)) {
+          fetchCards()
+          return prev
+        }
+        return prev.map((c) => c._id === payload.cardId ? { ...c, status: payload.status as Card['status'] } : c)
+      })
     }
     ws.on('card:status', handler)
     return () => { ws.off('card:status', handler) }
   }, [])
+
+  // Polling fallback: WS pub/sub is at-most-once, so if the `ready` event drops
+  // (browser WS reconnect window, ioredis reconnect, idle proxy, etc.) the row
+  // would stay on 'processing' until a manual reload. While any card is still
+  // processing, refetch every 5s — stops automatically once everything settles.
+  const anyProcessing = cards.some((c) => c.status === 'processing')
+  useEffect(() => {
+    if (!anyProcessing) return
+    const id = setInterval(fetchCards, 5000)
+    return () => clearInterval(id)
+  }, [anyProcessing])
 
   return (
     <DashboardLayout>

@@ -32,7 +32,6 @@ export function startCardWorker() {
         ])
 
         await Card.findByIdAndUpdate(cardId, { videoUrl, thumbnailUrl, qrImageUrl: qrPngUrl })
-        publishCardStatus(cardId, 'processing:transcoded')
         await job.updateProgress(50)
 
         // Step 3+4: Print pack AND MindAR compile in parallel — saves ~5s
@@ -42,8 +41,12 @@ export function startCardWorker() {
         ])
 
         await Card.findByIdAndUpdate(cardId, { printPackUrl, targetFileUrl })
-        publishCardStatus(cardId, 'processing:ar')
         await job.updateProgress(100)
+
+        // Only publish the terminal statuses — they match the Card enum and the
+        // frontend CardStatus type. Intermediate ('processing:transcoded',
+        // 'processing:ar') would cast-corrupt frontend state and momentarily
+        // render the "Processing failed" UI on the card-detail page.
 
         await Card.findByIdAndUpdate(cardId, { status: 'ready', errorMsg: '' })
         publishCardStatus(cardId, 'ready')
