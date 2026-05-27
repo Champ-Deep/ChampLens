@@ -12,7 +12,7 @@ try {
 
 const uploadsDir = path.join(__dirname, '../../uploads')
 
-export async function transcodeVideo(inputPath: string, slug: string, audioPath?: string): Promise<{ videoUrl: string; thumbnailUrl: string }> {
+export async function transcodeVideo(inputRelPath: string, slug: string, audioRelPath?: string): Promise<{ videoUrl: string; thumbnailUrl: string }> {
   const outDir = path.join(uploadsDir, 'videos', 'processed')
   fs.mkdirSync(outDir, { recursive: true })
 
@@ -20,15 +20,13 @@ export async function transcodeVideo(inputPath: string, slug: string, audioPath?
   const thumbFilename = `${slug}-thumb.jpg`
   const videoOut = path.join(outDir, videoFilename)
 
-  const localInput = inputPath.replace(/.*\/files\//, '')
-  const absoluteInput = path.join(uploadsDir, localInput)
+  const absoluteInput = path.join(uploadsDir, inputRelPath)
 
   await new Promise<void>((resolve, reject) => {
     let cmd = ffmpeg(absoluteInput)
 
-    if (audioPath) {
-      const localAudio = audioPath.replace(/.*\/files\//, '')
-      const absoluteAudio = path.join(uploadsDir, localAudio)
+    if (audioRelPath) {
+      const absoluteAudio = path.join(uploadsDir, audioRelPath)
       cmd = cmd.input(absoluteAudio)
         .outputOptions(['-map 0:v:0', '-map 1:a:0', '-shortest'])
     }
@@ -53,9 +51,8 @@ export async function transcodeVideo(inputPath: string, slug: string, audioPath?
 
   // Delete raw inputs now that the processed file exists
   try { fs.unlinkSync(absoluteInput) } catch {}
-  if (audioPath) {
-    const localAudio = audioPath.replace(/.*\/files\//, '')
-    try { fs.unlinkSync(path.join(uploadsDir, localAudio)) } catch {}
+  if (audioRelPath) {
+    try { fs.unlinkSync(path.join(uploadsDir, audioRelPath)) } catch {}
   }
 
   // Extract thumbnail at 0s
