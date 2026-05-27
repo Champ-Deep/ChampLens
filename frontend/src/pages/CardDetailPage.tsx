@@ -58,6 +58,16 @@ export default function CardDetailPage() {
     navigate('/dashboard')
   }
 
+  const downloadFile = async (endpoint: string, filename: string) => {
+    const res = await api.get(endpoint, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const previewUrl = `${window.location.origin}/preview/${card?.slug}`
   const viewerUrl = `${window.location.origin}/v/${card?.slug}`
 
@@ -116,15 +126,15 @@ export default function CardDetailPage() {
                     <img src={card.qrImageUrl} alt="QR Code" className="w-full h-full object-contain" />
                   </div>
                   <div className="space-y-2">
-                    <a href={`/api/cards/${id}/qr/print-pack`} className="btn-primary w-full flex items-center justify-center gap-2 text-sm">
+                    <button onClick={() => downloadFile(`/cards/${id}/qr/print-pack`, `champlens-${card.slug}-print-pack.zip`)} className="btn-primary w-full flex items-center justify-center gap-2 text-sm">
                       <Download className="w-4 h-4" /> Download Print Package
-                    </a>
-                    <a href={`/api/cards/${id}/qr`} className="btn-ghost w-full flex items-center justify-center gap-2 text-sm">
+                    </button>
+                    <button onClick={() => downloadFile(`/cards/${id}/qr`, `champlens-${card.slug}.png`)} className="btn-ghost w-full flex items-center justify-center gap-2 text-sm">
                       PNG (300 DPI)
-                    </a>
-                    <a href={`/api/cards/${id}/qr/svg`} className="btn-ghost w-full flex items-center justify-center gap-2 text-sm">
+                    </button>
+                    <button onClick={() => downloadFile(`/cards/${id}/qr/svg`, `champlens-${card.slug}.svg`)} className="btn-ghost w-full flex items-center justify-center gap-2 text-sm">
                       SVG Vector
-                    </a>
+                    </button>
                   </div>
                   <div className="mt-4 pt-4 border-t border-border">
                     <p className="text-xs text-text-secondary mb-2">AR Viewer URL</p>
