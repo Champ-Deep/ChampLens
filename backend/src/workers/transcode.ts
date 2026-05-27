@@ -63,7 +63,8 @@ export async function transcodeVideo(inputRelPath: string, slug: string, audioRe
       .on('error', reject)
   })
 
-  const base = process.env.FILE_BASE_URL ?? 'http://localhost:3001/files'
+  const rawBase = (process.env.FILE_BASE_URL ?? 'http://localhost:3001/files').trim().replace(/\/+$/, '')
+  const base = /^https?:\/\//i.test(rawBase) ? rawBase : `https://${rawBase}`
   return {
     videoUrl: `${base}/videos/processed/${videoFilename}`,
     thumbnailUrl: `${base}/videos/processed/${thumbFilename}`,

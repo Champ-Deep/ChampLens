@@ -43,7 +43,8 @@ export async function buildPrintPack(
     try { fs.unlinkSync(p) } catch {}
   }
 
-  const base = process.env.FILE_BASE_URL ?? 'http://localhost:3001/files'
+  const rawBase = (process.env.FILE_BASE_URL ?? 'http://localhost:3001/files').trim().replace(/\/+$/, '')
+  const base = /^https?:\/\//i.test(rawBase) ? rawBase : `https://${rawBase}`
   return `${base}/printpacks/${slug}-print-pack.zip`
 }
 

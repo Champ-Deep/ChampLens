@@ -46,6 +46,7 @@ export async function compileMindARTarget(qrPngUrl: string, slug: string): Promi
     throw new Error('MindAR compilation produced no output file')
   }
 
-  const base = process.env.FILE_BASE_URL ?? 'http://localhost:3001/files'
+  const rawBase = (process.env.FILE_BASE_URL ?? 'http://localhost:3001/files').trim().replace(/\/+$/, '')
+  const base = /^https?:\/\//i.test(rawBase) ? rawBase : `https://${rawBase}`
   return `${base}/mind/${mindFilename}`
 }
