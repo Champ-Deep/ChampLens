@@ -32,6 +32,14 @@ app.register(helmet, {
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
     },
   },
+  // /files/* serves public assets (thumbnails, videos, QR PNGs, print packs)
+  // that the frontend embeds via <img>/<video> from a different subdomain
+  // (champlens-frontend-* vs champlens-api-*). Helmet's default 'same-origin'
+  // policy blocks those no-cors loads with ERR_BLOCKED_BY_RESPONSE.NotSameOrigin
+  // even though CORS itself is fine — CORS doesn't govern <img>/<video> loads.
+  // Note: 'same-site' wouldn't work either; *.up.railway.app is a Public Suffix
+  // entry so the subdomains aren't considered same-site.
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 })
 
 // FRONTEND_URL accepts comma-separated origins so Railway's <service>.up.railway.app
