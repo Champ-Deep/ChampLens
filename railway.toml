@@ -7,8 +7,9 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Shell form so $PORT (Railway-provided) expands; server.ts reads process.env.PORT.
-startCommand = "sh -c 'PORT=${PORT:-3001} node dist/server.js'"
+# Run API server and card-processing worker in the same container.
+# Both share the same uploads volume, MongoDB, and Redis connections.
+startCommand = "sh -c 'PORT=${PORT:-3001} node dist/server.js & node dist/workers/index.js & wait'"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
