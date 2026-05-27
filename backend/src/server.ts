@@ -16,6 +16,7 @@ import analyticsRoutes from './routes/analytics'
 import fileRoutes from './routes/files'
 import adminRoutes from './routes/admin'
 import { registerWsClient, subscribeCardStatus } from './lib/wsEmitter'
+import { startCardWorker } from './workers/cardWorker'
 
 const app = Fastify({ logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' } })
 
@@ -166,6 +167,10 @@ const start = async () => {
       try {
         await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 10_000 })
         app.log.info('MongoDB connected')
+        // Start the card processing worker in the same process so it shares
+        // the filesystem with the upload handler — no cross-container file access.
+        startCardWorker()
+        app.log.info('Card processing worker started')
         return
       } catch (err) {
         app.log.error({ err: (err as Error).message, attempt }, 'MongoDB connection failed; retrying in 10s')

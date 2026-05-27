@@ -9,7 +9,7 @@ dockerfilePath = "Dockerfile"
 [deploy]
 # Run API server and card-processing worker in the same container.
 # Both share the same uploads volume, MongoDB, and Redis connections.
-startCommand = "sh -c 'PORT=${PORT:-3001} node dist/server.js & node dist/workers/index.js & wait'"
+startCommand = "sh -c 'PORT=${PORT:-3001} node dist/server.js'"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
