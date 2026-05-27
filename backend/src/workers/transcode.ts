@@ -12,6 +12,13 @@ try {
 
 const uploadsDir = path.join(__dirname, '../../uploads')
 
+// Accepts either a relative path ("videos/raw/abc.mp4") or a full URL
+// ("https://host/files/videos/raw/abc.mp4") and returns the absolute disk path.
+function toAbsolutePath(input: string): string {
+  const rel = input.includes('/files/') ? input.replace(/.*\/files\//, '') : input
+  return path.join(uploadsDir, rel)
+}
+
 export async function transcodeVideo(inputRelPath: string, slug: string, audioRelPath?: string): Promise<{ videoUrl: string; thumbnailUrl: string }> {
   const outDir = path.join(uploadsDir, 'videos', 'processed')
   fs.mkdirSync(outDir, { recursive: true })
@@ -20,13 +27,21 @@ export async function transcodeVideo(inputRelPath: string, slug: string, audioRe
   const thumbFilename = `${slug}-thumb.jpg`
   const videoOut = path.join(outDir, videoFilename)
 
-  const absoluteInput = path.join(uploadsDir, inputRelPath)
+  const absoluteInput = toAbsolutePath(inputRelPath)
+  console.log(`[transcode] input: "${inputRelPath}" → "${absoluteInput}" exists:${fs.existsSync(absoluteInput)} uploadsDir:${uploadsDir}`)
+
+  if (!fs.existsSync(absoluteInput)) {
+    // List what's actually in the raw dir so we can see what landed
+    const rawDir = path.join(uploadsDir, 'videos', 'raw')
+    const files = fs.existsSync(rawDir) ? fs.readdirSync(rawDir) : []
+    throw new Error(`Input file not found: ${absoluteInput} | uploadsDir=${uploadsDir} | raw dir contents: [${files.join(', ')}]`)
+  }
 
   await new Promise<void>((resolve, reject) => {
     let cmd = ffmpeg(absoluteInput)
 
     if (audioRelPath) {
-      const absoluteAudio = path.join(uploadsDir, audioRelPath)
+      const absoluteAudio = toAbsolutePath(audioRelPath)
       cmd = cmd.input(absoluteAudio)
         .outputOptions(['-map 0:v:0', '-map 1:a:0', '-shortest'])
     }
@@ -52,7 +67,7 @@ export async function transcodeVideo(inputRelPath: string, slug: string, audioRe
   // Delete raw inputs now that the processed file exists
   try { fs.unlinkSync(absoluteInput) } catch {}
   if (audioRelPath) {
-    try { fs.unlinkSync(path.join(uploadsDir, audioRelPath)) } catch {}
+    try { fs.unlinkSync(toAbsolutePath(audioRelPath)) } catch {}
   }
 
   // Extract thumbnail at 0s
