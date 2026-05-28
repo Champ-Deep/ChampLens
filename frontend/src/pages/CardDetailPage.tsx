@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Trash2, ExternalLink, QrCode,
-  Eye, Share2, AlertCircle, RefreshCw,
+  Eye, Share2, AlertCircle, RefreshCw, Pencil, X,
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -30,6 +30,58 @@ export default function CardDetailPage() {
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+
+  // Edit modal state — fields mirror PATCH /cards/:id's allowed list.
+  const [editOpen, setEditOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editForm, setEditForm] = useState({
+    ownerName: '', ownerTitle: '', company: '', website: '',
+    linkedin: '', instagram: '', twitter: '',
+  })
+
+  const openEdit = () => {
+    if (!card) return
+    setEditForm({
+      ownerName: card.ownerName,
+      ownerTitle: card.ownerTitle,
+      company: card.company,
+      website: card.website,
+      linkedin: card.socialLinks?.linkedin ?? '',
+      instagram: card.socialLinks?.instagram ?? '',
+      twitter: card.socialLinks?.twitter ?? '',
+    })
+    setEditOpen(true)
+  }
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!card) return
+    if (!editForm.ownerName.trim() || !editForm.ownerTitle.trim()) {
+      toastError('Name and job title are required.')
+      return
+    }
+    setSaving(true)
+    try {
+      const { data } = await api.patch(`/cards/${card._id}`, {
+        ownerName: editForm.ownerName.trim(),
+        ownerTitle: editForm.ownerTitle.trim(),
+        company: editForm.company.trim(),
+        website: editForm.website.trim(),
+        socialLinks: {
+          linkedin: editForm.linkedin.trim(),
+          instagram: editForm.instagram.trim(),
+          twitter: editForm.twitter.trim(),
+        },
+      })
+      setCard(data.card)
+      setEditOpen(false)
+      toastSuccess('Card updated.')
+    } catch (err: any) {
+      toastError(err.response?.data?.message ?? 'Save failed.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const fetchAll = async () => {
     try {
@@ -129,6 +181,10 @@ export default function CardDetailPage() {
               <ExternalLink className="w-4 h-4" />
               Preview
             </a>
+            <button onClick={openEdit} className="btn-ghost flex items-center gap-2 text-sm">
+              <Pencil className="w-4 h-4" />
+              Edit
+            </button>
             <button onClick={() => setConfirmDeleteOpen(true)} disabled={deleting} className="btn-ghost flex items-center gap-2 text-sm text-status-error border-status-error/30 hover:border-status-error">
               {deleting ? <Spinner size="sm" /> : <Trash2 className="w-4 h-4" />}
               Delete
@@ -285,6 +341,99 @@ export default function CardDetailPage() {
         onConfirm={handleDelete}
         onCancel={() => setConfirmDeleteOpen(false)}
       />
+
+      {/* Edit modal — fields map 1:1 to PATCH /cards/:id allowed list.
+          Video/audio aren't editable here; to swap media you delete and re-upload. */}
+      <AnimatePresence>
+        {editOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            onClick={(e) => { if (e.target === e.currentTarget && !saving) setEditOpen(false) }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="panel p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-semibold text-lg">Edit card details</h2>
+                <button onClick={() => setEditOpen(false)} disabled={saving} className="text-text-secondary hover:text-text-primary disabled:opacity-50">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEdit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs text-text-secondary mb-1.5">Full Name *</label>
+                    <input
+                      required
+                      value={editForm.ownerName}
+                      onChange={(e) => setEditForm((f) => ({ ...f, ownerName: e.target.value }))}
+                      className="input-field"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs text-text-secondary mb-1.5">Job Title *</label>
+                    <input
+                      required
+                      value={editForm.ownerTitle}
+                      onChange={(e) => setEditForm((f) => ({ ...f, ownerTitle: e.target.value }))}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1.5">Company</label>
+                    <input
+                      value={editForm.company}
+                      onChange={(e) => setEditForm((f) => ({ ...f, company: e.target.value }))}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1.5">Website</label>
+                    <input
+                      value={editForm.website}
+                      onChange={(e) => setEditForm((f) => ({ ...f, website: e.target.value }))}
+                      placeholder="https://"
+                      className="input-field"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs text-text-secondary mb-2">Social Links</p>
+                  <div className="space-y-2">
+                    {(['linkedin', 'instagram', 'twitter'] as const).map((k) => (
+                      <input
+                        key={k}
+                        value={editForm[k]}
+                        onChange={(e) => setEditForm((f) => ({ ...f, [k]: e.target.value }))}
+                        placeholder={`${k.charAt(0).toUpperCase() + k.slice(1)} URL`}
+                        className="input-field"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setEditOpen(false)} disabled={saving} className="btn-ghost flex-1">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={saving} className="btn-primary flex-1 flex items-center justify-center gap-2">
+                    {saving && <Spinner size="sm" />}
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </DashboardLayout>
   )
 }
