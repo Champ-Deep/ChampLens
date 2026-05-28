@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Pencil, Trash2, User, ToggleLeft, ToggleRight, X } from 'lucide-react'
+import { Pencil, Trash2, User, ToggleLeft, ToggleRight, X, Search } from 'lucide-react'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Spinner from '@/components/ui/Spinner'
 import ConfirmModal from '@/components/ui/ConfirmModal'
@@ -25,6 +25,19 @@ export default function AdminUsersPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Filters. Both client-side — admin user lists stay manageable.
+  const [search, setSearch] = useState('')
+  const [planFilter, setPlanFilter] = useState<'all' | typeof PLANS[number]>('all')
+
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return users.filter((u) => {
+      if (planFilter !== 'all' && u.plan !== planFilter) return false
+      if (!q) return true
+      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+    })
+  }, [users, search, planFilter])
 
   const fetchUsers = async () => {
     try {
@@ -100,6 +113,41 @@ export default function AdminUsersPage() {
         </p>
       </div>
 
+      {/* Filters — hide until there are enough users to bother filtering. */}
+      {!loading && users.length > 5 && (
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or email…"
+              className="input-field pl-9 pr-9"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <select
+            value={planFilter}
+            onChange={(e) => setPlanFilter(e.target.value as typeof planFilter)}
+            className="input-field sm:w-40"
+          >
+            <option value="all" className="bg-bg-base">All plans</option>
+            {PLANS.map((p) => (
+              <option key={p} value={p} className="bg-bg-base capitalize">{p}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-24"><Spinner size="lg" /></div>
       ) : (
@@ -116,7 +164,7 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
+              {filteredUsers.map((u) => (
                 <motion.tr
                   key={u._id}
                   initial={{ opacity: 0 }}
@@ -170,8 +218,14 @@ export default function AdminUsersPage() {
               ))}
             </tbody>
           </table>
-          {users.length === 0 && (
+          {users.length === 0 ? (
             <p className="text-center text-text-secondary py-12 text-sm">No users have signed up yet.</p>
+          ) : filteredUsers.length === 0 && (
+            <p className="text-center text-text-secondary py-12 text-sm">
+              No users match {search ? `"${search}"` : ''}
+              {search && planFilter !== 'all' ? ' with ' : ''}
+              {planFilter !== 'all' ? `plan "${planFilter}"` : ''}.
+            </p>
           )}
         </div>
       )}

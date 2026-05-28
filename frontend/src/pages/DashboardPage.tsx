@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import CardGrid from '@/components/dashboard/CardGrid'
 import Spinner from '@/components/ui/Spinner'
@@ -15,7 +15,20 @@ export default function DashboardPage() {
   const displayName = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress?.split('@')[0]
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
   const ws = useSocket()
+
+  // Case-insensitive filter across the fields users most commonly identify
+  // their own cards by. Client-side because list size stays small per user.
+  const filteredCards = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return cards
+    return cards.filter((c) =>
+      c.ownerName.toLowerCase().includes(q) ||
+      c.ownerTitle.toLowerCase().includes(q) ||
+      (c.company ?? '').toLowerCase().includes(q)
+    )
+  }, [cards, search])
 
   const fetchCards = async () => {
     try {
@@ -60,7 +73,7 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold">My Cards</h1>
           <p className="text-text-secondary text-sm mt-0.5">
@@ -73,10 +86,37 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      {/* Search bar — hidden until user has enough cards to want filtering. */}
+      {cards.length > 3 && (
+        <div className="relative mb-6 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, title, or company…"
+            className="input-field pl-9 pr-9"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-24"><Spinner size="lg" /></div>
+      ) : search && filteredCards.length === 0 ? (
+        <div className="text-center py-16 text-text-secondary text-sm">
+          No cards match "{search}".
+        </div>
       ) : (
-        <CardGrid cards={cards} />
+        <CardGrid cards={filteredCards} />
       )}
     </DashboardLayout>
   )
