@@ -123,9 +123,32 @@ export async function requireAdmin(req: FastifyRequest, reply: FastifyReply) {
   await requireAuth(req, reply)
   if (reply.sent) return
 
-  // Admin role is stored in Clerk's publicMetadata.role — set it in the Clerk
-  // dashboard under Users → <user> → Metadata → Public.
+  // Admin role lives in Clerk's publicMetadata.role — set it in the Clerk
+  // dashboard under Users → <user> → Metadata → Public → { "role": "admin" }.
+  //
+  // Two-path lookup:
+  //   Fast: read `metadata.role` from sessionClaims. Only works if a Clerk
+  //         session token template has been configured to inject it.
+  //         (Dashboard → Sessions → Customize session token → add:
+  //          { "metadata": "{{user.public_metadata}}" })
+  //   Slow: clerkClient.users.getUser(clerkUserId) to read publicMetadata
+  //         directly. Works regardless of session-template config — this is
+  //         the path we hit by default.
+  // Admin endpoints are low-volume so the Clerk roundtrip is fine.
   const { sessionClaims } = getAuth(req)
-  const role = (sessionClaims as any)?.metadata?.role ?? (sessionClaims as any)?.publicMetadata?.role
-  if (role !== 'admin') return reply.code(403).send({ message: 'Forbidden' })
+  const claimRole = (sessionClaims as any)?.metadata?.role ?? (sessionClaims as any)?.publicMetadata?.role
+  if (claimRole === 'admin') return
+
+  const clerkUserId = (req as any).clerkUserId as string
+  try {
+    const clerkUser = await clerkClient.users.getUser(clerkUserId)
+    const role = (clerkUser.publicMetadata as { role?: string })?.role
+    if (role !== 'admin') return reply.code(403).send({ message: 'Forbidden' })
+  } catch (err) {
+    req.log.error({ err: (err as Error).message, clerkUserId }, 'requireAdmin: Clerk getUser failed')
+    return reply.code(503).send({
+      message: 'Admin check unavailable. Please try again.',
+      detail: (err as Error).message,
+    })
+  }
 }
