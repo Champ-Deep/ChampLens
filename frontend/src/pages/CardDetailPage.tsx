@@ -53,6 +53,22 @@ export default function CardDetailPage() {
     setEditOpen(true)
   }
 
+  const [retrying, setRetrying] = useState(false)
+  const handleRetry = async () => {
+    if (!card) return
+    setRetrying(true)
+    try {
+      await api.post(`/cards/${card._id}/retry`)
+      setCard((c) => c ? { ...c, status: 'processing', errorMsg: '' } : c)
+      toastSuccess('Retry started — watch this page for status updates.')
+    } catch (err: any) {
+      // Backend returns 410 with a helpful message when the source file is gone.
+      toastError(err.response?.data?.message ?? 'Retry failed.')
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!card) return
@@ -236,9 +252,10 @@ export default function CardDetailPage() {
                 <div className="text-center py-8">
                   <AlertCircle className="w-8 h-8 mx-auto mb-2 text-status-error" />
                   <p className="text-sm text-status-error mb-1">Processing failed</p>
-                  <p className="text-xs text-text-secondary mb-4">{card.errorMsg ?? 'Unknown error'}</p>
-                  <button onClick={fetchAll} className="btn-ghost text-sm flex items-center gap-2 mx-auto">
-                    <RefreshCw className="w-3.5 h-3.5" /> Retry
+                  <p className="text-xs text-text-secondary mb-4 break-words">{card.errorMsg ?? 'Unknown error'}</p>
+                  <button onClick={handleRetry} disabled={retrying} className="btn-ghost text-sm flex items-center gap-2 mx-auto">
+                    {retrying ? <Spinner size="sm" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    {retrying ? 'Retrying…' : 'Retry'}
                   </button>
                 </div>
               )}

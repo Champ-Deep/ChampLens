@@ -126,6 +126,39 @@ export default async function cardRoutes(app: FastifyInstance) {
     return { card }
   })
 
+  // Retry a failed (or stuck) card by re-enqueuing the BullMQ job.
+  // Only works if the source video file still exists on disk — once Railway
+  // wipes the ephemeral filesystem (no volume), the source is gone forever
+  // and we return 410 Gone with a clear message instead of pretending to retry.
+  app.post('/:id/retry', { preHandler: requireAuth }, async (req, reply) => {
+    const user = (req as any).user
+    const { id } = req.params as any
+
+    const card = await Card.findOne({ _id: id, userId: user._id })
+    if (!card) return reply.code(404).send({ message: 'Card not found.' })
+    if (card.status === 'ready') {
+      return reply.code(400).send({ message: 'Card is already ready — nothing to retry.' })
+    }
+
+    // Re-derive the relative filenames the worker expects. videoStorageId is
+    // the full URL the API returned at upload time; strip the /files/ prefix.
+    const videoFilename = card.videoStorageId.replace(/.*\/files\//, '')
+    const audioFilename = card.audioStorageId ? card.audioStorageId.replace(/.*\/files\//, '') : ''
+
+    const absVideoPath = path.join(__dirname, '../../uploads', videoFilename)
+    if (!fs.existsSync(absVideoPath)) {
+      return reply.code(410).send({
+        message: 'Source video is no longer on disk — likely lost on a container restart. Delete this card and re-upload to recover.',
+        detail: `Expected file at ${absVideoPath} not found. Attach a Railway Volume to /app/uploads to prevent this in future.`,
+      })
+    }
+
+    await Card.findByIdAndUpdate(id, { status: 'processing', errorMsg: '' })
+    await addCardJob(String(card._id), videoFilename, audioFilename || undefined)
+
+    return reply.code(202).send({ cardId: card._id, status: 'processing' })
+  })
+
   // Delete card
   app.delete('/:id', { preHandler: requireAuth }, async (req, reply) => {
     const user = (req as any).user
