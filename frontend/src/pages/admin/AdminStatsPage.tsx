@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, CreditCard, Eye, AlertCircle } from 'lucide-react'
+import { Users, CreditCard, Eye } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Spinner from '@/components/ui/Spinner'
 import api from '@/lib/api'
+import { toastError } from '@/lib/toast'
 import { formatNumber } from '@/lib/utils'
 
 interface Stats {
@@ -20,12 +21,11 @@ interface Stats {
 export default function AdminStatsPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
 
   useEffect(() => {
     api.get('/admin/stats')
       .then(({ data }) => setStats(data))
-      .catch(() => setError('Failed to load stats.'))
+      .catch((err) => toastError(err.response?.data?.message ?? 'Failed to load stats.'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -35,12 +35,6 @@ export default function AdminStatsPage() {
         <h1 className="text-2xl font-bold mb-1">Platform Stats</h1>
         <p className="text-text-secondary text-sm">Overview of all activity on ChampLens</p>
       </div>
-
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-status-error bg-status-error/10 px-4 py-3 rounded mb-6">
-          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
-        </div>
-      )}
 
       {loading ? (
         <div className="flex justify-center py-24"><Spinner size="lg" /></div>

@@ -12,8 +12,10 @@ import {
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Spinner from '@/components/ui/Spinner'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 import api from '@/lib/api'
 import { useSocket } from '@/hooks/useSocket'
+import { toastSuccess, toastError } from '@/lib/toast'
 import { formatDate, formatNumber } from '@/lib/utils'
 import type { Card, Analytics } from '@/lib/types'
 
@@ -27,6 +29,7 @@ export default function CardDetailPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const fetchAll = async () => {
     try {
@@ -36,6 +39,8 @@ export default function CardDetailPage() {
       ])
       setCard(cardRes.data.card)
       setAnalytics(analyticsRes.data)
+    } catch (err: any) {
+      if (loading) toastError(err.response?.data?.message ?? 'Failed to load card.')
     } finally {
       setLoading(false)
     }
@@ -61,20 +66,30 @@ export default function CardDetailPage() {
   }, [card?.status, id])
 
   const handleDelete = async () => {
-    if (!confirm('Delete this card? The QR code will stop working immediately.')) return
     setDeleting(true)
-    await api.delete(`/cards/${id}`)
-    navigate('/dashboard')
+    try {
+      await api.delete(`/cards/${id}`)
+      toastSuccess('Card deleted.')
+      navigate('/dashboard')
+    } catch (err: any) {
+      toastError(err.response?.data?.message ?? 'Delete failed.')
+      setDeleting(false)
+      setConfirmDeleteOpen(false)
+    }
   }
 
   const downloadFile = async (endpoint: string, filename: string) => {
-    const res = await api.get(endpoint, { responseType: 'blob' })
-    const url = URL.createObjectURL(res.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const res = await api.get(endpoint, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      toastError(err.response?.data?.message ?? 'Download failed.')
+    }
   }
 
   const previewUrl = `${window.location.origin}/preview/${card?.slug}`
@@ -114,7 +129,7 @@ export default function CardDetailPage() {
               <ExternalLink className="w-4 h-4" />
               Preview
             </a>
-            <button onClick={handleDelete} disabled={deleting} className="btn-ghost flex items-center gap-2 text-sm text-status-error border-status-error/30 hover:border-status-error">
+            <button onClick={() => setConfirmDeleteOpen(true)} disabled={deleting} className="btn-ghost flex items-center gap-2 text-sm text-status-error border-status-error/30 hover:border-status-error">
               {deleting ? <Spinner size="sm" /> : <Trash2 className="w-4 h-4" />}
               Delete
             </button>
@@ -259,6 +274,17 @@ export default function CardDetailPage() {
           </div>
         </div>
       </motion.div>
+
+      <ConfirmModal
+        open={confirmDeleteOpen}
+        title="Delete this card?"
+        description="The QR code will stop working immediately and printed copies will lead to a dead link. This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        busy={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
     </DashboardLayout>
   )
 }

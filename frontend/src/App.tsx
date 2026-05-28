@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuth, useUser, Show, RedirectToSignIn } from '@clerk/react'
+import { Toaster } from 'react-hot-toast'
 import { setTokenGetter } from '@/lib/api'
 import LandingPage from '@/pages/LandingPage'
 import LoginPage from '@/pages/LoginPage'
@@ -44,6 +45,25 @@ export default function App() {
   return (
     <BrowserRouter>
       <ApiAuthBinder />
+      {/* Toast styling matches our dark panel design tokens. Toasts live at the
+          top of the app tree so they appear above modals (z-index >= 60). */}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          className: '',
+          style: {
+            background: '#0F0F10',
+            color: '#F5F5F5',
+            border: '1px solid #2A2A2C',
+            borderRadius: '8px',
+            padding: '12px 14px',
+            fontSize: '13px',
+            maxWidth: '380px',
+          },
+          success: { iconTheme: { primary: '#22C55E', secondary: '#0F0F10' } },
+          error:   { iconTheme: { primary: '#E8003D', secondary: '#0F0F10' } },
+        }}
+      />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         {/* Clerk's SignIn/SignUp need wildcard children for their internal routing. */}

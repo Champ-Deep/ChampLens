@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Pencil, Trash2, User, ToggleLeft, ToggleRight, X, AlertCircle } from 'lucide-react'
+import { Pencil, Trash2, User, ToggleLeft, ToggleRight, X } from 'lucide-react'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Spinner from '@/components/ui/Spinner'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 import api from '@/lib/api'
+import { toastSuccess, toastError } from '@/lib/toast'
 import { formatDate } from '@/lib/utils'
 import type { AdminUser } from '@/lib/types'
 
@@ -16,20 +18,21 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
 
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null)
   const [editPlan, setEditPlan] = useState<typeof PLANS[number]>('free')
-  const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchUsers = async () => {
     try {
       const { data } = await api.get('/admin/users?limit=100')
       setUsers(data.users)
       setTotal(data.total)
-    } catch {
-      setError('Failed to load users.')
+    } catch (err: any) {
+      toastError(err.response?.data?.message ?? 'Failed to load users.')
     } finally {
       setLoading(false)
     }
@@ -40,7 +43,6 @@ export default function AdminUsersPage() {
   const openEdit = (u: AdminUser) => {
     setEditTarget(u)
     setEditPlan(u.plan)
-    setFormError('')
   }
 
   const closeModal = () => setEditTarget(null)
@@ -48,36 +50,43 @@ export default function AdminUsersPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editTarget) return
-    setFormError('')
     setSaving(true)
     try {
       await api.patch(`/admin/users/${editTarget._id}`, { plan: editPlan })
       closeModal()
+      toastSuccess(`Plan updated for ${editTarget.name}.`)
       fetchUsers()
     } catch (err: any) {
-      setFormError(err.response?.data?.message ?? 'Save failed.')
+      toastError(err.response?.data?.message ?? 'Save failed.')
     } finally {
       setSaving(false)
     }
   }
 
   const toggleActive = async (u: AdminUser) => {
+    const next = !u.isActive
     try {
-      await api.patch(`/admin/users/${u._id}`, { isActive: !u.isActive })
-      setUsers((prev) => prev.map((x) => x._id === u._id ? { ...x, isActive: !u.isActive } : x))
+      await api.patch(`/admin/users/${u._id}`, { isActive: next })
+      setUsers((prev) => prev.map((x) => x._id === u._id ? { ...x, isActive: next } : x))
+      toastSuccess(`${u.name} ${next ? 'enabled' : 'disabled'}.`)
     } catch (err: any) {
-      alert(err.response?.data?.message ?? 'Failed to update user.')
+      toastError(err.response?.data?.message ?? 'Failed to update user.')
     }
   }
 
-  const handleDelete = async (u: AdminUser) => {
-    if (!confirm(`Delete local record for "${u.name}"? Their cards will be reassigned to admin. (To remove the Clerk account too, do it in the Clerk dashboard.)`)) return
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
     try {
-      await api.delete(`/admin/users/${u._id}`)
-      setUsers((prev) => prev.filter((x) => x._id !== u._id))
+      await api.delete(`/admin/users/${deleteTarget._id}`)
+      setUsers((prev) => prev.filter((x) => x._id !== deleteTarget._id))
       setTotal((t) => t - 1)
+      toastSuccess(`Deleted local record for ${deleteTarget.name}.`)
+      setDeleteTarget(null)
     } catch (err: any) {
-      alert(err.response?.data?.message ?? 'Delete failed.')
+      toastError(err.response?.data?.message ?? 'Delete failed.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -90,12 +99,6 @@ export default function AdminUsersPage() {
           <a href="https://dashboard.clerk.com" target="_blank" rel="noreferrer" className="text-accent hover:underline">Clerk dashboard</a>.
         </p>
       </div>
-
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-status-error bg-status-error/10 px-4 py-3 rounded mb-6">
-          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
-        </div>
-      )}
 
       {loading ? (
         <div className="flex justify-center py-24"><Spinner size="lg" /></div>
@@ -155,7 +158,7 @@ export default function AdminUsersPage() {
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => handleDelete(u)}
+                        onClick={() => setDeleteTarget(u)}
                         className="p-1.5 rounded text-text-secondary hover:text-status-error hover:bg-status-error/10 transition-colors"
                         title="Delete local record"
                       >
@@ -209,10 +212,6 @@ export default function AdminUsersPage() {
                   </select>
                 </div>
 
-                {formError && (
-                  <p className="text-xs text-status-error bg-status-error/10 px-3 py-2 rounded">{formError}</p>
-                )}
-
                 <div className="flex gap-3 pt-1">
                   <button type="button" onClick={closeModal} className="btn-ghost flex-1">
                     Cancel
@@ -227,6 +226,17 @@ export default function AdminUsersPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title={deleteTarget ? `Delete local record for ${deleteTarget.name}?` : ''}
+        description="Their cards will be reassigned to the admin account. To remove the Clerk account too, do it in the Clerk dashboard."
+        confirmLabel="Delete"
+        destructive
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </DashboardLayout>
   )
 }

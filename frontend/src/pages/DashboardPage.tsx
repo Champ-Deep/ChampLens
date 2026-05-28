@@ -7,6 +7,7 @@ import Spinner from '@/components/ui/Spinner'
 import api from '@/lib/api'
 import { useUser } from '@clerk/react'
 import { useSocket } from '@/hooks/useSocket'
+import { toastError } from '@/lib/toast'
 import type { Card } from '@/lib/types'
 
 export default function DashboardPage() {
@@ -20,6 +21,9 @@ export default function DashboardPage() {
     try {
       const { data } = await api.get('/cards')
       setCards(data.cards)
+    } catch (err: any) {
+      // Don't toast on every poll cycle — only on the initial mount fetch.
+      if (loading) toastError(err.response?.data?.message ?? 'Failed to load cards.')
     } finally {
       setLoading(false)
     }

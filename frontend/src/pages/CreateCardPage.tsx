@@ -6,6 +6,7 @@ import { Upload, Film, CheckCircle2, AlertCircle, X, Music } from 'lucide-react'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Spinner from '@/components/ui/Spinner'
 import api from '@/lib/api'
+import { toastSuccess, toastError } from '@/lib/toast'
 
 const STEPS = ['Upload Video', 'Transcoding', 'Generating QR', 'Compiling AR Target', 'Ready']
 
@@ -94,9 +95,11 @@ export default function CreateCardPage() {
           setUploadProgress(Math.round((e.loaded / (e.total ?? 1)) * 100))
         },
       })
+      toastSuccess('Card created — processing started.')
       navigate(`/dashboard/cards/${data.cardId}`)
     } catch (err: any) {
-      setError(err.response?.data?.message ?? 'Upload failed. Please try again.')
+      // Backend errors (auth, server) → toast; local form validation stays inline above.
+      toastError(err.response?.data?.message ?? 'Upload failed. Please try again.')
       setUploading(false)
     }
   }
