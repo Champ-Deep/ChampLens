@@ -264,7 +264,23 @@ Both datastores are deployed on Railway itself (no Atlas, no external services).
    Note: if you named your Mongo service something other than `Mongo`, adjust the
    reference (e.g. `${{champlens-mongo.MONGO_URL}}`). Do NOT set `PORT` — Railway
    injects it.
-5. Deploy. Healthcheck hits `/health` — should return 200 within seconds (the
+5. **REQUIRED: attach a persistent volume to `/app/uploads`.**
+   Settings → **Volumes** → **+ New Volume**:
+   - Mount path: `/app/uploads`
+   - Size: 5 GB (or whatever your storage budget allows)
+
+   Without this, every container restart wipes uploaded videos. BullMQ retries
+   the job from Redis but the source file is gone — every card fails with
+   `Input file not found: /app/uploads/videos/raw/<slug>.mp4 | raw dir contents: []`.
+
+   The Dockerfile creates `/app/uploads` as a regular dir (line 54); Railway
+   overlays the volume on top of that mount path when the volume is attached.
+
+   **Single-replica limitation:** Railway volumes can't be shared across replicas.
+   Keep the API service at 1 replica until/unless you migrate to object storage
+   (R2/S3). Horizontal scale = move off disk first.
+
+6. Deploy. Healthcheck hits `/health` — should return 200 within seconds (the
    listen-first pattern means the API responds before MongoDB connects).
 
 ### Step 3 — Worker service
