@@ -56,6 +56,10 @@ export function startCardWorker() {
         console.error(`[worker] Card ${cardId} failed:`, err.message)
         await Card.findByIdAndUpdate(cardId, { status: 'error', errorMsg: err.message ?? 'Processing failed' })
         publishCardStatus(cardId, 'error')
+        // If the raw upload file is gone (stale job after a redeploy, ephemeral FS),
+        // retrying will never recover — return without throwing so BullMQ doesn't
+        // burn the remaining attempts on a permanently-lost file.
+        if (err.message?.includes('Input file not found')) return
         throw err
       }
     },

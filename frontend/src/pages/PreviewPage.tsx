@@ -45,13 +45,13 @@ export default function PreviewPage() {
 
         <div className="panel overflow-hidden shadow-glow">
           {card.thumbnailUrl && (
-            <div className="aspect-video">
+            <div className="w-full bg-black flex items-center justify-center">
               <video
                 src={card.videoUrl}
                 poster={card.thumbnailUrl}
                 controls
                 playsInline
-                className="w-full h-full object-cover"
+                className="w-full max-h-[70vh] object-contain"
               />
             </div>
           )}

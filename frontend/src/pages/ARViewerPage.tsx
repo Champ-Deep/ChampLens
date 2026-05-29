@@ -114,12 +114,33 @@ export default function ARViewerPage() {
       videoEl.muted = true
       videoEl.playsInline = true
       videoEl.setAttribute('webkit-playsinline', 'true')
+      videoEl.load() // ensure metadata fetch starts immediately
 
       const texture = new THREE.VideoTexture(videoEl)
       texture.minFilter = THREE.LinearFilter
       texture.magFilter = THREE.LinearFilter
 
-      const geometry = new THREE.PlaneGeometry(1, 1)
+      // Determine aspect ratio from video metadata so portrait (9:16) and
+      // landscape (16:9) videos both fill the plane without distortion.
+      // We create the plane after metadata loads; default to 16:9 until then.
+      const getAspect = (): number => {
+        if (videoEl.videoWidth && videoEl.videoHeight) return videoEl.videoWidth / videoEl.videoHeight
+        return 16 / 9
+      }
+
+      const aspect = await new Promise<number>((res) => {
+        if (videoEl.readyState >= 1) return res(getAspect())
+        videoEl.addEventListener('loadedmetadata', () => res(getAspect()), { once: true })
+        // Fallback if metadata event never fires
+        setTimeout(() => res(getAspect()), 3000)
+      })
+
+      // MindAR anchors the plane to the QR card's real-world width (1 unit = card width).
+      // For portrait video the height exceeds the card width, so planeHeight > 1.
+      const planeWidth = 1
+      const planeHeight = planeWidth / aspect
+
+      const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight)
       const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.FrontSide })
       const plane = new THREE.Mesh(geometry, material)
       anchor.group.add(plane)

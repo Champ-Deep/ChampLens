@@ -19,6 +19,35 @@ function toAbsolutePath(input: string): string {
   return path.join(uploadsDir, rel)
 }
 
+// Probe video to get display dimensions accounting for rotation metadata.
+// Android phones record vertical video with a rotation tag — ffprobe streams
+// report the coded (raw) size, but side_data rotate gives the display orientation.
+function probeDisplaySize(filePath: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err: Error | null, data: ffmpeg.FfprobeData) => {
+      if (err) return reject(err)
+      const vs = data.streams.find((s: ffmpeg.FfprobeStream) => s.codec_type === 'video')
+      if (!vs) return reject(new Error('No video stream found'))
+
+      let w = vs.width ?? 0
+      let h = vs.height ?? 0
+
+      // Check for rotation in side_data (common on Android/iOS recordings)
+      const rotation = ((vs as any).side_data_list ?? []).find(
+        (sd: any) => sd.side_data_type === 'Display Matrix'
+      )?.rotation ?? (vs as any).tags?.rotate ?? 0
+      const rot = Math.abs(Number(rotation))
+
+      // 90° or 270° → swap width/height so we know the actual display orientation
+      if (rot === 90 || rot === 270) {
+        ;[w, h] = [h, w]
+      }
+
+      resolve({ width: w, height: h })
+    })
+  })
+}
+
 export async function transcodeVideo(inputRelPath: string, slug: string, audioRelPath?: string): Promise<{ videoUrl: string; thumbnailUrl: string }> {
   const outDir = path.join(uploadsDir, 'videos', 'processed')
   fs.mkdirSync(outDir, { recursive: true })
@@ -37,6 +66,26 @@ export async function transcodeVideo(inputRelPath: string, slug: string, audioRe
     throw new Error(`Input file not found: ${absoluteInput} | uploadsDir=${uploadsDir} | raw dir contents: [${files.join(', ')}]`)
   }
 
+  // Determine display orientation so we scale the long edge to 720px correctly
+  // and so portrait (9:16) videos aren't mistakenly scaled to landscape size.
+  const { width: displayW, height: displayH } = await probeDisplaySize(absoluteInput)
+  const isPortrait = displayH > displayW
+  console.log(`[transcode] display size: ${displayW}x${displayH} portrait=${isPortrait}`)
+
+  // Scale filter:
+  // • Portrait (h > w): constrain height to 1280, width auto (preserves 9:16)
+  // • Landscape (w >= h): constrain height to 720, width auto (preserves 16:9)
+  // trunc(.../ 2)*2 keeps dimensions divisible by 2 (required by yuv420p).
+  // The transpose filter in FFmpeg applies the display rotation from metadata;
+  // using -vf with scale means we must handle the rotation ourselves via
+  // autorotate (on by default) — scale sees the already-rotated decoded frames.
+  const scaleFilter = isPortrait
+    ? 'scale=trunc(1280*iw/ih/2)*2:1280'   // portrait: long edge (h) → 1280
+    : 'scale=trunc(720*iw/ih/2)*2:720'      // landscape: height → 720
+
+  // Thumbnail dimensions: match the display aspect ratio
+  const thumbSize = isPortrait ? '360x640' : '640x360'
+
   await new Promise<void>((resolve, reject) => {
     let cmd = ffmpeg(absoluteInput)
 
@@ -51,7 +100,7 @@ export async function transcodeVideo(inputRelPath: string, slug: string, audioRe
       .audioCodec('aac')
       .videoBitrate('1200k')
       .audioBitrate('128k')
-      .size('?x720')
+      .videoFilter(scaleFilter)
       .outputOptions([
         '-crf 23',
         '-preset fast',
@@ -70,10 +119,10 @@ export async function transcodeVideo(inputRelPath: string, slug: string, audioRe
     try { fs.unlinkSync(toAbsolutePath(audioRelPath)) } catch {}
   }
 
-  // Extract thumbnail at 0s
+  // Extract thumbnail at 0s — use display-correct dimensions
   await new Promise<void>((resolve, reject) => {
     ffmpeg(videoOut)
-      .screenshots({ timestamps: ['00:00:00.000'], filename: thumbFilename, folder: outDir, size: '640x360' })
+      .screenshots({ timestamps: ['00:00:00.000'], filename: thumbFilename, folder: outDir, size: thumbSize })
       .on('end', () => resolve())
       .on('error', reject)
   })
