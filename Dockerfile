@@ -52,12 +52,8 @@ COPY backend/src/assets ./src/assets
 COPY backend/package.json ./
 
 RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
-
-# Declare /app/uploads as a volume mount point.
-# On Railway: add a Volume in the service settings mounted at /app/uploads
-# so uploads survive redeploys. Without a volume, Railway's ephemeral FS
-# wipes this directory on every deploy while BullMQ jobs are still queued.
-VOLUME ["/app/uploads"]
+# NOTE: To persist uploads across redeploys on Railway, add a Volume in the
+# service settings mounted at /app/uploads (Railway does not support VOLUME).
 
 USER node
 
