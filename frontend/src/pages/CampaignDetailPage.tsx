@@ -12,7 +12,9 @@ import {
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Spinner from '@/components/ui/Spinner'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 import api from '@/lib/api'
+import { toastSuccess, toastError } from '@/lib/toast'
 import { useSocket } from '@/hooks/useSocket'
 import { formatDate, formatNumber } from '@/lib/utils'
 import type { Campaign, Analytics } from '@/lib/types'
@@ -27,6 +29,7 @@ export default function CampaignDetailPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const fetchAll = async () => {
     try {
@@ -52,24 +55,32 @@ export default function CampaignDetailPage() {
   }, [id])
 
   const handleDelete = async () => {
-    if (!confirm('Delete this campaign? The QR code will stop working immediately.')) return
     setDeleting(true)
-    await api.delete(`/campaigns/${id}`)
-    navigate('/dashboard/campaigns')
+    try {
+      await api.delete(`/campaigns/${id}`)
+      toastSuccess('Campaign deleted.')
+      navigate('/dashboard/campaigns')
+    } catch (err: any) {
+      toastError(err.response?.data?.message ?? 'Delete failed.')
+      setDeleting(false)
+    }
   }
 
-  const downloadQr = async (type: 'png' | 'svg' | 'print-pack') => {
-    const endpoint = type === 'print-pack' ? `/campaigns/${id}/qr/print-pack`
-      : type === 'svg' ? `/campaigns/${id}/qr/svg`
-      : `/campaigns/${id}/qr`
-    const res = await api.get(endpoint, { responseType: 'blob' })
-    const ext = type === 'print-pack' ? 'zip' : type
-    const url = URL.createObjectURL(res.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `campaign-qr-${campaign?.slug}.${ext}`
-    a.click()
-    URL.revokeObjectURL(url)
+  const downloadFile = async (endpoint: string, filename: string) => {
+    try {
+      const res = await api.get(endpoint, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      toastError(err.response?.data?.message ?? 'Download failed.')
+    }
   }
 
   const viewerUrl = `${window.location.origin}/c/${campaign?.slug}`
@@ -110,7 +121,7 @@ export default function CampaignDetailPage() {
                 Preview
               </a>
             )}
-            <button onClick={handleDelete} disabled={deleting} className="btn-ghost flex items-center gap-2 text-sm text-status-error border-status-error/30 hover:border-status-error">
+            <button onClick={() => setConfirmDelete(true)} disabled={deleting} className="btn-ghost flex items-center gap-2 text-sm text-status-error border-status-error/30 hover:border-status-error">
               {deleting ? <Spinner size="sm" /> : <Trash2 className="w-4 h-4" />}
               Delete
             </button>
@@ -132,19 +143,19 @@ export default function CampaignDetailPage() {
                   </div>
                   <div className="space-y-2">
                     <button
-                      onClick={() => downloadQr('print-pack')}
+                      onClick={() => downloadFile(`/campaigns/${id}/qr/print-pack`, `champlens-${campaign.slug}-print-pack.zip`)}
                       className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
                     >
                       <Download className="w-4 h-4" /> Download Print Package
                     </button>
                     <button
-                      onClick={() => downloadQr('png')}
+                      onClick={() => downloadFile(`/campaigns/${id}/qr`, `champlens-${campaign.slug}.png`)}
                       className="btn-ghost w-full flex items-center justify-center gap-2 text-sm"
                     >
                       PNG (300 DPI)
                     </button>
                     <button
-                      onClick={() => downloadQr('svg')}
+                      onClick={() => downloadFile(`/campaigns/${id}/qr/svg`, `champlens-${campaign.slug}.svg`)}
                       className="btn-ghost w-full flex items-center justify-center gap-2 text-sm"
                     >
                       SVG Vector
@@ -273,6 +284,17 @@ export default function CampaignDetailPage() {
           </div>
         </div>
       </motion.div>
+
+      <ConfirmModal
+        open={confirmDelete}
+        title="Delete campaign?"
+        description="The QR code will stop working immediately. This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        busy={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </DashboardLayout>
   )
 }
