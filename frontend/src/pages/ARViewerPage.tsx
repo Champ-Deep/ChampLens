@@ -160,6 +160,7 @@ export default function ARViewerPage() {
 
       await mindarThree.start()
       renderer.setAnimationLoop(() => {
+        if (videoEl.readyState >= videoEl.HAVE_CURRENT_DATA) texture.needsUpdate = true
         renderer.render(scene, camera)
       })
     } catch (err) {
@@ -274,10 +275,12 @@ export default function ARViewerPage() {
         style={{ zIndex: 0 }}
       />
 
-      {/* Hidden video for MindAR texture (rendered by Three.js) */}
+      {/* Off-screen video for MindAR texture — must NOT be display:none or
+          browsers suspend decoding and the VideoTexture gets no frames */}
       <video
         ref={overlayVideoRef}
-        className="hidden"
+        className="absolute"
+        style={{ width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
         playsInline
         muted={muted}
         loop
