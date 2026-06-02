@@ -12,11 +12,13 @@ import fs from 'fs'
 
 import authRoutes from './routes/auth'
 import cardRoutes from './routes/cards'
+import campaignRoutes from './routes/campaigns'
 import analyticsRoutes from './routes/analytics'
 import fileRoutes from './routes/files'
 import adminRoutes from './routes/admin'
 import { registerWsClient, subscribeCardStatus } from './lib/wsEmitter'
 import { startCardWorker } from './workers/cardWorker'
+import { startCampaignWorker } from './workers/campaignWorker'
 
 const app = Fastify({ logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' } })
 
@@ -110,6 +112,7 @@ app.setErrorHandler((error, req, reply) => {
 
 app.register(authRoutes, { prefix: '/api/auth' })
 app.register(cardRoutes, { prefix: '/api/cards' })
+app.register(campaignRoutes, { prefix: '/api/campaigns' })
 app.register(analyticsRoutes, { prefix: '/api/analytics' })
 app.register(adminRoutes, { prefix: '/api/admin' })
 app.register(fileRoutes, { prefix: '/files' })
@@ -178,7 +181,8 @@ const start = async () => {
         // Start the card processing worker in the same process so it shares
         // the filesystem with the upload handler — no cross-container file access.
         startCardWorker()
-        app.log.info('Card processing worker started')
+        startCampaignWorker()
+        app.log.info('Card + Campaign processing workers started')
         return
       } catch (err) {
         app.log.error({ err: (err as Error).message, attempt }, 'MongoDB connection failed; retrying in 10s')

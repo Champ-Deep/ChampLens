@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutGrid, Plus, LogOut, QrCode, Users, BarChart3, ShieldCheck, Menu, X } from 'lucide-react'
+import { LayoutGrid, Plus, LogOut, QrCode, Users, BarChart3, ShieldCheck, Menu, X, Film } from 'lucide-react'
 import { useUser, useClerk } from '@clerk/react'
 
 interface Props { children: React.ReactNode }
@@ -28,8 +28,10 @@ export default function DashboardLayout({ children }: Props) {
   }
 
   const navLinks = [
-    { to: '/dashboard', icon: LayoutGrid, label: 'My Cards' },
+    { to: '/dashboard', icon: LayoutGrid, label: 'AR Cards' },
     { to: '/dashboard/create', icon: Plus, label: 'New Card' },
+    { to: '/dashboard/campaigns', icon: Film, label: 'Campaigns' },
+    { to: '/dashboard/campaigns/create', icon: Plus, label: 'New Campaign' },
     ...(isAdmin ? [
       { to: '/admin/users', icon: Users, label: 'Users' },
       { to: '/admin/stats', icon: BarChart3, label: 'Platform Stats' },

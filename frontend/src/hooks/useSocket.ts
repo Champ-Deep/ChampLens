@@ -30,7 +30,8 @@ function connect() {
   ws.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data)
-      const set = handlers.get('card:status')
+      const eventName = payload.type ?? 'card:status'
+      const set = handlers.get(eventName)
       if (set) set.forEach((fn) => fn(payload))
     } catch {}
   }

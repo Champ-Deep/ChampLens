@@ -21,3 +21,14 @@ export async function addCardJob(cardId: string, videoPath: string, audioPath?: 
     removeOnFail: { count: 50 },
   })
 }
+
+export const campaignQueue = new Queue('campaign-processing', { connection: getRedisConnection() })
+
+export async function addCampaignJob(campaignId: string, videoPath: string, audioPath?: string) {
+  return campaignQueue.add('process-campaign', { campaignId, videoPath, audioPath }, {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 50 },
+  })
+}

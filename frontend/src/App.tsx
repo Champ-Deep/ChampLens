@@ -13,6 +13,10 @@ import PreviewPage from '@/pages/PreviewPage'
 import RegisterPage from '@/pages/RegisterPage'
 import AdminUsersPage from '@/pages/admin/AdminUsersPage'
 import AdminStatsPage from '@/pages/admin/AdminStatsPage'
+import CampaignsPage from '@/pages/CampaignsPage'
+import CreateCampaignPage from '@/pages/CreateCampaignPage'
+import CampaignDetailPage from '@/pages/CampaignDetailPage'
+import CampaignViewerPage from '@/pages/CampaignViewerPage'
 
 // Wire Clerk's getToken into axios so every API call carries a fresh Bearer token.
 function ApiAuthBinder() {
@@ -72,9 +76,13 @@ export default function App() {
         <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="/dashboard/create" element={<PrivateRoute><CreateCardPage /></PrivateRoute>} />
         <Route path="/dashboard/cards/:id" element={<PrivateRoute><CardDetailPage /></PrivateRoute>} />
+        <Route path="/dashboard/campaigns" element={<PrivateRoute><CampaignsPage /></PrivateRoute>} />
+        <Route path="/dashboard/campaigns/create" element={<PrivateRoute><CreateCampaignPage /></PrivateRoute>} />
+        <Route path="/dashboard/campaigns/:id" element={<PrivateRoute><CampaignDetailPage /></PrivateRoute>} />
         <Route path="/admin/users" element={<AdminRoute><AdminUsersPage /></AdminRoute>} />
         <Route path="/admin/stats" element={<AdminRoute><AdminStatsPage /></AdminRoute>} />
         <Route path="/v/:slug" element={<ARViewerPage />} />
+        <Route path="/c/:slug" element={<CampaignViewerPage />} />
         <Route path="/preview/:slug" element={<PreviewPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

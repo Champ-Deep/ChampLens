@@ -78,3 +78,35 @@ export interface CreateCardPayload {
   twitter?: string
   video: File
 }
+
+export interface Campaign {
+  _id: string
+  userId: string
+  slug: string
+  title: string
+  description: string
+  ctaText: string
+  ctaUrl: string
+  videoUrl: string
+  thumbnailUrl: string
+  qrImageUrl: string
+  printPackUrl: string
+  status: CardStatus
+  errorMsg?: string
+  isActive: boolean
+  scanCount?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PublicCampaign {
+  slug: string
+  title: string
+  description: string
+  ctaText: string
+  ctaUrl: string
+  videoUrl: string
+  thumbnailUrl: string
+  status: CardStatus
+  isActive: boolean
+}

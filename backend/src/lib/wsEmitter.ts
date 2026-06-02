@@ -16,9 +16,10 @@
 
 import IORedis from 'ioredis'
 
-type StatusPayload = { cardId: string; status: string }
+type StatusPayload = Record<string, string>
 
-const CHANNEL = 'card:status'
+const CARD_CHANNEL = 'card:status'
+const CAMPAIGN_CHANNEL = 'campaign:status'
 
 // In-process subscribers (the API's /ws endpoint registers a callback here on
 // each new browser connection).
@@ -29,14 +30,21 @@ export function registerWsClient(fn: (payload: StatusPayload) => void) {
   return () => clients.delete(fn)
 }
 
-/** Fan out to in-process WS clients. Called by the Redis subscriber when a
- *  message arrives. Don't call this directly from the worker — use
- *  publishCardStatus so the message can cross process boundaries. */
-export function emitCardStatus(cardId: string, status: string) {
-  const payload: StatusPayload = { cardId, status }
+/** Fan out to in-process WS clients. */
+function broadcastToClients(payload: StatusPayload) {
   for (const fn of clients) {
     try { fn(payload) } catch { /* never let a bad listener block the others */ }
   }
+}
+
+/** Fan out card status to WS clients. Called by the Redis subscriber. */
+export function emitCardStatus(cardId: string, status: string) {
+  broadcastToClients({ type: 'card:status', cardId, status })
+}
+
+/** Fan out campaign status to WS clients. Called by the Redis subscriber. */
+export function emitCampaignStatus(campaignId: string, status: string) {
+  broadcastToClients({ type: 'campaign:status', campaignId, status })
 }
 
 function newRedisClient(role: 'publisher' | 'subscriber'): IORedis {
@@ -64,38 +72,43 @@ function getPublisher(): IORedis {
   return publisher
 }
 
-/** Publish a card-status update across processes. Fire-and-forget; failures
- *  are logged but don't propagate, so the worker pipeline isn't gated on
- *  Redis being healthy. */
+/** Publish a card-status update across processes. Fire-and-forget. */
 export function publishCardStatus(cardId: string, status: string): void {
-  const payload: StatusPayload = { cardId, status }
   getPublisher()
-    .publish(CHANNEL, JSON.stringify(payload))
+    .publish(CARD_CHANNEL, JSON.stringify({ cardId, status }))
+    .catch((err) => console.error('[wsEmitter] publish failed:', err.message))
+}
+
+/** Publish a campaign-status update across processes. Fire-and-forget. */
+export function publishCampaignStatus(campaignId: string, status: string): void {
+  getPublisher()
+    .publish(CAMPAIGN_CHANNEL, JSON.stringify({ campaignId, status }))
     .catch((err) => console.error('[wsEmitter] publish failed:', err.message))
 }
 
 let subscribed = false
 
-/** Subscribe to the cross-process status channel and route messages to local
- *  WS clients. Idempotent. Call once on API boot. */
+/** Subscribe to both card and campaign status channels and route to WS clients.
+ *  Idempotent. Call once on API boot. */
 export function subscribeCardStatus(): void {
   if (subscribed) return
   subscribed = true
   const subscriber = newRedisClient('subscriber')
-  subscriber.subscribe(CHANNEL, (err) => {
+  subscriber.subscribe(CARD_CHANNEL, CAMPAIGN_CHANNEL, (err) => {
     if (err) {
       console.error('[wsEmitter] subscribe failed:', err.message)
-      subscribed = false // allow a future retry
+      subscribed = false
       return
     }
-    console.log(`[wsEmitter] subscribed to Redis channel '${CHANNEL}'`)
+    console.log(`[wsEmitter] subscribed to Redis channels '${CARD_CHANNEL}', '${CAMPAIGN_CHANNEL}'`)
   })
   subscriber.on('message', (channel, message) => {
-    if (channel !== CHANNEL) return
     try {
-      const payload = JSON.parse(message) as StatusPayload
-      if (payload && typeof payload.cardId === 'string' && typeof payload.status === 'string') {
+      const payload = JSON.parse(message)
+      if (channel === CARD_CHANNEL && payload?.cardId && payload?.status) {
         emitCardStatus(payload.cardId, payload.status)
+      } else if (channel === CAMPAIGN_CHANNEL && payload?.campaignId && payload?.status) {
+        emitCampaignStatus(payload.campaignId, payload.status)
       }
     } catch {
       console.error('[wsEmitter] discarded malformed pub/sub message:', message)
