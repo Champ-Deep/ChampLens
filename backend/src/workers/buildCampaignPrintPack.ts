@@ -33,7 +33,8 @@ export async function buildCampaignPrintPack(
     { path: readmePath,      name: 'README.txt' },
   ])
 
-  for (const p of [cardMockupPath, stickerPath, readmePath, qrSvgPath]) {
+  // Keep qrSvgPath on disk — the /qr/svg download endpoint serves it directly
+  for (const p of [cardMockupPath, stickerPath, readmePath]) {
     try { fs.unlinkSync(p) } catch {}
   }
 
