@@ -7,6 +7,8 @@ import CampaignScan from '../models/CampaignScan'
 import { requireAuth } from '../lib/auth'
 import { saveStream, getLocalPath } from '../lib/storage'
 import { addCampaignJob } from '../workers/queue'
+import { generateCampaignQR } from '../workers/generateCampaignQR'
+import { buildCampaignPrintPack } from '../workers/buildCampaignPrintPack'
 
 export default async function campaignRoutes(app: FastifyInstance) {
 
@@ -139,11 +141,20 @@ export default async function campaignRoutes(app: FastifyInstance) {
   app.get('/:id/qr', { preHandler: requireAuth }, async (req, reply) => {
     const user = (req as any).user
     const { id } = req.params as any
-    const campaign = await Campaign.findOne({ _id: id, userId: user._id }).lean()
-    if (!campaign?.qrImageUrl) return reply.code(404).send({ message: 'QR not ready yet.' })
-    const filename = campaign.qrImageUrl.replace(/.*\/files\//, '')
-    const filePath = getLocalPath(filename)
-    if (!fs.existsSync(filePath)) return reply.code(404).send({ message: 'File not found.' })
+    let campaign = await Campaign.findOne({ _id: id, userId: user._id }).lean()
+    if (!campaign || campaign.status !== 'ready') return reply.code(404).send({ message: 'QR not ready yet.' })
+
+    const filename = `qr/${campaign.slug}-300dpi.png`
+    let filePath = getLocalPath(filename)
+
+    if (!fs.existsSync(filePath)) {
+      // Files wiped by redeploy — regenerate QR on-demand
+      const { qrPngUrl, qrSvgPath } = await generateCampaignQR(campaign.slug)
+      await buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title)
+      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl })
+      filePath = getLocalPath(filename)
+    }
+
     return reply
       .header('Content-Type', 'image/png')
       .header('Content-Disposition', `attachment; filename="champqr-${campaign.slug}.png"`)
@@ -155,9 +166,17 @@ export default async function campaignRoutes(app: FastifyInstance) {
     const user = (req as any).user
     const { id } = req.params as any
     const campaign = await Campaign.findOne({ _id: id, userId: user._id }).lean()
-    if (!campaign) return reply.code(404).send({ message: 'Campaign not found.' })
-    const svgPath = getLocalPath(`qr/${campaign.slug}-vector.svg`)
-    if (!fs.existsSync(svgPath)) return reply.code(404).send({ message: 'SVG not ready yet.' })
+    if (!campaign || campaign.status !== 'ready') return reply.code(404).send({ message: 'QR not ready yet.' })
+
+    let svgPath = getLocalPath(`qr/${campaign.slug}-vector.svg`)
+
+    if (!fs.existsSync(svgPath)) {
+      const { qrPngUrl, qrSvgPath } = await generateCampaignQR(campaign.slug)
+      await buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title)
+      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl })
+      svgPath = getLocalPath(`qr/${campaign.slug}-vector.svg`)
+    }
+
     return reply
       .header('Content-Type', 'image/svg+xml')
       .header('Content-Disposition', `attachment; filename="champqr-${campaign.slug}.svg"`)
@@ -169,10 +188,18 @@ export default async function campaignRoutes(app: FastifyInstance) {
     const user = (req as any).user
     const { id } = req.params as any
     const campaign = await Campaign.findOne({ _id: id, userId: user._id }).lean()
-    if (!campaign?.printPackUrl) return reply.code(404).send({ message: 'Print pack not ready yet.' })
-    const filename = campaign.printPackUrl.replace(/.*\/files\//, '')
-    const filePath = getLocalPath(filename)
-    if (!fs.existsSync(filePath)) return reply.code(404).send({ message: 'File not found.' })
+    if (!campaign || campaign.status !== 'ready') return reply.code(404).send({ message: 'Print pack not ready yet.' })
+
+    const zipFilename = `printpacks/${campaign.slug}-print-pack.zip`
+    let filePath = getLocalPath(zipFilename)
+
+    if (!fs.existsSync(filePath)) {
+      const { qrPngUrl, qrSvgPath } = await generateCampaignQR(campaign.slug)
+      const printPackUrl = await buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title)
+      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl, printPackUrl })
+      filePath = getLocalPath(zipFilename)
+    }
+
     return reply
       .header('Content-Type', 'application/zip')
       .header('Content-Disposition', `attachment; filename="champqr-${campaign.slug}-print-pack.zip"`)

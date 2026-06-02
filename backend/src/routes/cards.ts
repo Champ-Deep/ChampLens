@@ -7,6 +7,8 @@ import Scan from '../models/Scan'
 import { requireAuth } from '../lib/auth'
 import { saveStream, getLocalPath } from '../lib/storage'
 import { addCardJob } from '../workers/queue'
+import { generateQR } from '../workers/generateQR'
+import { buildPrintPack } from '../workers/buildPrintPack'
 
 export default async function cardRoutes(app: FastifyInstance) {
 
@@ -182,10 +184,18 @@ export default async function cardRoutes(app: FastifyInstance) {
     const user = (req as any).user
     const { id } = req.params as any
     const card = await Card.findOne({ _id: id, userId: user._id }).lean()
-    if (!card?.qrImageUrl) return reply.code(404).send({ message: 'QR not ready yet.' })
-    const filename = card.qrImageUrl.replace(/.*\/files\//, '')
-    const filePath = getLocalPath(filename)
-    if (!fs.existsSync(filePath)) return reply.code(404).send({ message: 'File not found.' })
+    if (!card || card.status !== 'ready') return reply.code(404).send({ message: 'QR not ready yet.' })
+
+    const filename = `qr/${card.slug}-300dpi.png`
+    let filePath = getLocalPath(filename)
+
+    if (!fs.existsSync(filePath)) {
+      const { qrPngUrl, qrSvgPath } = await generateQR(card.slug)
+      await buildPrintPack(card.slug, qrPngUrl, qrSvgPath, card.ownerName)
+      await Card.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl })
+      filePath = getLocalPath(filename)
+    }
+
     return reply
       .header('Content-Type', 'image/png')
       .header('Content-Disposition', `attachment; filename="champlens-${card.slug}.png"`)
@@ -197,9 +207,17 @@ export default async function cardRoutes(app: FastifyInstance) {
     const user = (req as any).user
     const { id } = req.params as any
     const card = await Card.findOne({ _id: id, userId: user._id }).lean()
-    if (!card) return reply.code(404).send({ message: 'Card not found.' })
-    const svgPath = getLocalPath(`qr/${card.slug}-vector.svg`)
-    if (!fs.existsSync(svgPath)) return reply.code(404).send({ message: 'SVG not ready yet.' })
+    if (!card || card.status !== 'ready') return reply.code(404).send({ message: 'QR not ready yet.' })
+
+    let svgPath = getLocalPath(`qr/${card.slug}-vector.svg`)
+
+    if (!fs.existsSync(svgPath)) {
+      const { qrPngUrl, qrSvgPath } = await generateQR(card.slug)
+      await buildPrintPack(card.slug, qrPngUrl, qrSvgPath, card.ownerName)
+      await Card.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl })
+      svgPath = getLocalPath(`qr/${card.slug}-vector.svg`)
+    }
+
     return reply
       .header('Content-Type', 'image/svg+xml')
       .header('Content-Disposition', `attachment; filename="champlens-${card.slug}.svg"`)
@@ -211,10 +229,18 @@ export default async function cardRoutes(app: FastifyInstance) {
     const user = (req as any).user
     const { id } = req.params as any
     const card = await Card.findOne({ _id: id, userId: user._id }).lean()
-    if (!card?.printPackUrl) return reply.code(404).send({ message: 'Print pack not ready yet.' })
-    const filename = card.printPackUrl.replace(/.*\/files\//, '')
-    const filePath = getLocalPath(filename)
-    if (!fs.existsSync(filePath)) return reply.code(404).send({ message: 'File not found.' })
+    if (!card || card.status !== 'ready') return reply.code(404).send({ message: 'Print pack not ready yet.' })
+
+    const zipFilename = `printpacks/${card.slug}-print-pack.zip`
+    let filePath = getLocalPath(zipFilename)
+
+    if (!fs.existsSync(filePath)) {
+      const { qrPngUrl, qrSvgPath } = await generateQR(card.slug)
+      const printPackUrl = await buildPrintPack(card.slug, qrPngUrl, qrSvgPath, card.ownerName)
+      await Card.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl, printPackUrl })
+      filePath = getLocalPath(zipFilename)
+    }
+
     return reply
       .header('Content-Type', 'application/zip')
       .header('Content-Disposition', `attachment; filename="champlens-${card.slug}-print-pack.zip"`)
