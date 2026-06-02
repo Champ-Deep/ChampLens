@@ -31,7 +31,6 @@ export function startCampaignWorker() {
         ])
 
         await Campaign.findByIdAndUpdate(campaignId, { videoUrl, thumbnailUrl, qrImageUrl: qrPngUrl })
-        emitCampaignStatus(campaignId, 'processing:transcoded')
         await job.updateProgress(70)
 
         // Build print pack (no MindAR needed for campaigns)
@@ -48,6 +47,8 @@ export function startCampaignWorker() {
         console.error(`[campaign-worker] Campaign ${campaignId} failed:`, err.message)
         await Campaign.findByIdAndUpdate(campaignId, { status: 'error', errorMsg: err.message ?? 'Processing failed' })
         emitCampaignStatus(campaignId, 'error')
+        // Stale file after redeploy — retrying will never recover on ephemeral FS
+        if (err.message?.includes('Input file not found')) return
         throw err
       }
     },

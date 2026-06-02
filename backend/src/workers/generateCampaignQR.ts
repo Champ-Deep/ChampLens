@@ -65,7 +65,8 @@ export async function generateCampaignQR(slug: string): Promise<{ qrPngUrl: stri
     .png({ compressionLevel: 9 })
     .toFile(pngPath)
 
-  const base = process.env.FILE_BASE_URL ?? 'http://localhost:3001/files'
+  const rawBase = (process.env.FILE_BASE_URL ?? 'http://localhost:3001/files').trim().replace(/\/+$/, '')
+  const base = /^https?:\/\//i.test(rawBase) ? rawBase : `https://${rawBase}`
   return {
     qrPngUrl: `${base}/qr/${pngFilename}`,
     qrSvgPath: svgPath,
