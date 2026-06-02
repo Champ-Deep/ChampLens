@@ -83,6 +83,9 @@ COPY package.json ./
 # Create uploads dir with correct permissions
 RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
 
+# Declare persistent volume mount point (configure in Railway service settings)
+VOLUME ["/app/uploads"]
+
 # Run as non-root
 USER node
 

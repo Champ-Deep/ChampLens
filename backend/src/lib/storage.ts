@@ -10,20 +10,27 @@ function fileBaseUrl(): string {
   return raw
 }
 
-export async function saveFile(buffer: Buffer, filename: string): Promise<string> {
+export interface SaveResult {
+  /** Relative path from uploadsDir root — e.g. "videos/raw/abc.mp4". Pass to BullMQ jobs. */
+  filename: string
+  /** Full public URL — e.g. "https://host/files/videos/raw/abc.mp4". Store in MongoDB. */
+  url: string
+}
+
+export async function saveFile(buffer: Buffer, filename: string): Promise<SaveResult> {
   const filePath = path.join(uploadsDir, filename)
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, buffer)
-  return `${fileBaseUrl()}/${filename}`
+  return { filename, url: `${fileBaseUrl()}/${filename}` }
 }
 
-export async function saveStream(stream: Readable, filename: string): Promise<string> {
+export async function saveStream(stream: Readable, filename: string): Promise<SaveResult> {
   const filePath = path.join(uploadsDir, filename)
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   return new Promise((resolve, reject) => {
     const ws = fs.createWriteStream(filePath)
     stream.pipe(ws)
-    ws.on('finish', () => resolve(`${fileBaseUrl()}/${filename}`))
+    ws.on('finish', () => resolve({ filename, url: `${fileBaseUrl()}/${filename}` }))
     ws.on('error', reject)
   })
 }

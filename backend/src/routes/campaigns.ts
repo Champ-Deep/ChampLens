@@ -16,26 +16,22 @@ export default async function campaignRoutes(app: FastifyInstance) {
     const parts = req.parts()
 
     const fields: Record<string, string> = {}
-    let videoUrl = ''
-    let audioUrl = ''
-    let videoFilename = ''
-    let audioFilename = ''
+    let video = { filename: '', url: '' }
+    let audio = { filename: '', url: '' }
 
     for await (const part of parts) {
       if (part.type === 'field') {
         fields[part.fieldname] = part.value as string
       } else if (part.type === 'file' && part.fieldname === 'video') {
         const ext = path.extname(part.filename || '.mp4')
-        videoFilename = `videos/raw/${nanoid(12)}${ext}`
-        videoUrl = await saveStream(part.file, videoFilename)
+        video = await saveStream(part.file, `videos/raw/${nanoid(12)}${ext}`)
       } else if (part.type === 'file' && part.fieldname === 'audio') {
         const ext = path.extname(part.filename || '.mp3')
-        audioFilename = `audio/raw/${nanoid(12)}${ext}`
-        audioUrl = await saveStream(part.file, audioFilename)
+        audio = await saveStream(part.file, `audio/raw/${nanoid(12)}${ext}`)
       }
     }
 
-    if (!videoUrl) return reply.code(400).send({ message: 'Video file is required.' })
+    if (!video.url) return reply.code(400).send({ message: 'Video file is required.' })
     if (!fields.title?.trim()) return reply.code(400).send({ message: 'Campaign title is required.' })
 
     const slug = nanoid(8)
@@ -46,14 +42,13 @@ export default async function campaignRoutes(app: FastifyInstance) {
       description: fields.description?.trim() ?? '',
       ctaText: fields.ctaText?.trim() ?? '',
       ctaUrl: fields.ctaUrl ?? '',
-      videoStorageId: videoUrl,
-      audioStorageId: audioUrl,
+      videoStorageId: video.url,    // public URL stored in DB
+      audioStorageId: audio.url,
       status: 'processing',
     })
 
-    // Pass relative filenames so the worker resolves absolute disk paths
-    // without depending on FILE_BASE_URL or URL-stripping (matches card route pattern)
-    await addCampaignJob(String(campaign._id), videoFilename, audioFilename || undefined)
+    // Pass relative filenames — worker resolves absolute disk path directly
+    await addCampaignJob(String(campaign._id), video.filename, audio.filename || undefined)
 
     return reply.code(202).send({ campaignId: campaign._id, slug, status: 'processing' })
   })

@@ -1,6 +1,8 @@
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import fs from 'fs'
+import https from 'https'
+import http from 'http'
 
 // Use ffmpeg-static if available, otherwise fall back to system ffmpeg (Docker)
 try {
@@ -17,6 +19,27 @@ const uploadsDir = path.join(__dirname, '../../uploads')
 function toAbsolutePath(input: string): string {
   const rel = input.includes('/files/') ? input.replace(/.*\/files\//, '') : input
   return path.join(uploadsDir, rel)
+}
+
+// Download a URL to a local file path. Used to recover uploads lost from the
+// ephemeral FS after a Railway redeploy while BullMQ jobs were still queued.
+function downloadToFile(url: string, destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    fs.mkdirSync(path.dirname(destPath), { recursive: true })
+    const file = fs.createWriteStream(destPath)
+    const get = url.startsWith('https') ? https.get : http.get
+    get(url, (res) => {
+      if (res.statusCode && res.statusCode >= 400) {
+        reject(new Error(`Download failed: HTTP ${res.statusCode} for ${url}`))
+        return
+      }
+      res.pipe(file)
+      file.on('finish', () => file.close(() => resolve()))
+    }).on('error', (err) => {
+      fs.unlink(destPath, () => {})
+      reject(err)
+    })
+  })
 }
 
 // Probe video to get display dimensions accounting for rotation metadata.
@@ -48,7 +71,13 @@ function probeDisplaySize(filePath: string): Promise<{ width: number; height: nu
   })
 }
 
-export async function transcodeVideo(inputRelPath: string, slug: string, audioRelPath?: string): Promise<{ videoUrl: string; thumbnailUrl: string }> {
+export async function transcodeVideo(
+  inputRelPath: string,
+  slug: string,
+  audioRelPath?: string,
+  fallbackUrl?: string,    // full public URL to re-download if local file was wiped
+  audioFallbackUrl?: string,
+): Promise<{ videoUrl: string; thumbnailUrl: string }> {
   const outDir = path.join(uploadsDir, 'videos', 'processed')
   fs.mkdirSync(outDir, { recursive: true })
 
@@ -57,13 +86,26 @@ export async function transcodeVideo(inputRelPath: string, slug: string, audioRe
   const videoOut = path.join(outDir, videoFilename)
 
   const absoluteInput = toAbsolutePath(inputRelPath)
-  console.log(`[transcode] input: "${inputRelPath}" → "${absoluteInput}" exists:${fs.existsSync(absoluteInput)} uploadsDir:${uploadsDir}`)
+  console.log(`[transcode] input: "${inputRelPath}" → "${absoluteInput}" exists:${fs.existsSync(absoluteInput)}`)
 
   if (!fs.existsSync(absoluteInput)) {
-    // List what's actually in the raw dir so we can see what landed
-    const rawDir = path.join(uploadsDir, 'videos', 'raw')
-    const files = fs.existsSync(rawDir) ? fs.readdirSync(rawDir) : []
-    throw new Error(`Input file not found: ${absoluteInput} | uploadsDir=${uploadsDir} | raw dir contents: [${files.join(', ')}]`)
+    if (fallbackUrl) {
+      console.log(`[transcode] local file missing — re-downloading from ${fallbackUrl}`)
+      await downloadToFile(fallbackUrl, absoluteInput)
+    } else {
+      const rawDir = path.join(uploadsDir, 'videos', 'raw')
+      const files = fs.existsSync(rawDir) ? fs.readdirSync(rawDir) : []
+      throw new Error(`Input file not found: ${absoluteInput} | uploadsDir=${uploadsDir} | raw dir contents: [${files.join(', ')}]`)
+    }
+  }
+
+  // Re-download audio if also missing
+  if (audioRelPath && audioFallbackUrl) {
+    const absAudio = toAbsolutePath(audioRelPath)
+    if (!fs.existsSync(absAudio)) {
+      console.log(`[transcode] audio file missing — re-downloading from ${audioFallbackUrl}`)
+      await downloadToFile(audioFallbackUrl, absAudio)
+    }
   }
 
   // Determine display orientation so we scale the long edge to 720px correctly

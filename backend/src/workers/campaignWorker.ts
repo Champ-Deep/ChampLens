@@ -26,7 +26,7 @@ export function startCampaignWorker() {
 
         // Transcode video AND generate QR in parallel
         const [{ videoUrl, thumbnailUrl }, { qrPngUrl, qrSvgPath }] = await Promise.all([
-          transcodeVideo(videoPath, campaign.slug, audioPath),
+          transcodeVideo(videoPath, campaign.slug, audioPath, campaign.videoStorageId, campaign.audioStorageId || undefined),
           generateCampaignQR(campaign.slug),
         ])
 
@@ -47,8 +47,8 @@ export function startCampaignWorker() {
         console.error(`[campaign-worker] Campaign ${campaignId} failed:`, err.message)
         await Campaign.findByIdAndUpdate(campaignId, { status: 'error', errorMsg: err.message ?? 'Processing failed' })
         emitCampaignStatus(campaignId, 'error')
-        // Stale file after redeploy — retrying will never recover on ephemeral FS
-        if (err.message?.includes('Input file not found')) return
+        // If fallback URL download also failed, don't burn retries — job is unrecoverable
+        if (err.message?.includes('Download failed') || err.message?.includes('Input file not found')) return
         throw err
       }
     },

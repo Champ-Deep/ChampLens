@@ -27,7 +27,7 @@ export function startCardWorker() {
 
         // Step 1+2: Transcode video AND generate QR in parallel — saves ~15-30s
         const [{ videoUrl, thumbnailUrl }, { qrPngUrl, qrSvgPath }] = await Promise.all([
-          transcodeVideo(videoPath, card.slug, audioPath),
+          transcodeVideo(videoPath, card.slug, audioPath, card.videoStorageId, card.audioStorageId || undefined),
           generateQR(card.slug),
         ])
 
@@ -56,10 +56,8 @@ export function startCardWorker() {
         console.error(`[worker] Card ${cardId} failed:`, err.message)
         await Card.findByIdAndUpdate(cardId, { status: 'error', errorMsg: err.message ?? 'Processing failed' })
         publishCardStatus(cardId, 'error')
-        // If the raw upload file is gone (stale job after a redeploy, ephemeral FS),
-        // retrying will never recover — return without throwing so BullMQ doesn't
-        // burn the remaining attempts on a permanently-lost file.
-        if (err.message?.includes('Input file not found')) return
+        // If fallback URL download also failed, don't burn retries — job is unrecoverable
+        if (err.message?.includes('Download failed') || err.message?.includes('Input file not found')) return
         throw err
       }
     },
