@@ -14,6 +14,7 @@ export interface ICampaign extends Document {
   videoUrl: string
   thumbnailUrl: string
   qrImageUrl: string
+  targetFileUrl: string
   printPackUrl: string
   status: CampaignStatus
   errorMsg: string
@@ -35,6 +36,7 @@ const CampaignSchema = new Schema<ICampaign>(
     videoUrl:       { type: String, default: '' },
     thumbnailUrl:   { type: String, default: '' },
     qrImageUrl:     { type: String, default: '' },
+    targetFileUrl:  { type: String, default: '' },
     printPackUrl:   { type: String, default: '' },
     status:    { type: String, enum: ['processing', 'ready', 'error'], default: 'processing' },
     errorMsg:  { type: String, default: '' },

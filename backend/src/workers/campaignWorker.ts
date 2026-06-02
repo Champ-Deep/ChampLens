@@ -3,6 +3,7 @@ import Campaign from '../models/Campaign'
 import { transcodeVideo } from './transcode'
 import { generateCampaignQR } from './generateCampaignQR'
 import { buildCampaignPrintPack } from './buildCampaignPrintPack'
+import { compileMindARTarget } from './compileMindAR'
 import { publishCampaignStatus as emitCampaignStatus } from '../lib/wsEmitter'
 
 function getRedisConnection() {
@@ -31,12 +32,15 @@ export function startCampaignWorker() {
         ])
 
         await Campaign.findByIdAndUpdate(campaignId, { videoUrl, thumbnailUrl, qrImageUrl: qrPngUrl })
-        await job.updateProgress(70)
+        await job.updateProgress(60)
 
-        // Build print pack (no MindAR needed for campaigns)
-        const printPackUrl = await buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title)
+        // Build print pack AND compile MindAR target in parallel
+        const [printPackUrl, targetFileUrl] = await Promise.all([
+          buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title),
+          compileMindARTarget(qrPngUrl, campaign.slug),
+        ])
 
-        await Campaign.findByIdAndUpdate(campaignId, { printPackUrl })
+        await Campaign.findByIdAndUpdate(campaignId, { printPackUrl, targetFileUrl })
         await job.updateProgress(100)
 
         await Campaign.findByIdAndUpdate(campaignId, { status: 'ready', errorMsg: '' })

@@ -90,6 +90,7 @@ export interface Campaign {
   videoUrl: string
   thumbnailUrl: string
   qrImageUrl: string
+  targetFileUrl: string
   printPackUrl: string
   status: CardStatus
   errorMsg?: string
@@ -107,6 +108,7 @@ export interface PublicCampaign {
   ctaUrl: string
   videoUrl: string
   thumbnailUrl: string
+  targetFileUrl: string
   status: CardStatus
   isActive: boolean
 }

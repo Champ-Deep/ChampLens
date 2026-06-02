@@ -9,6 +9,7 @@ import { saveStream, getLocalPath } from '../lib/storage'
 import { addCampaignJob } from '../workers/queue'
 import { generateCampaignQR } from '../workers/generateCampaignQR'
 import { buildCampaignPrintPack } from '../workers/buildCampaignPrintPack'
+import { compileMindARTarget } from '../workers/compileMindAR'
 
 export default async function campaignRoutes(app: FastifyInstance) {
 
@@ -78,10 +79,10 @@ export default async function campaignRoutes(app: FastifyInstance) {
     }
   })
 
-  // Public get by slug (video viewer) — must be before /:id
+  // Public get by slug (AR viewer) — must be before /:id
   app.get('/view/:slug', async (req, reply) => {
     const { slug } = req.params as any
-    const campaign = await Campaign.findOne({ slug }).select('-userId -videoStorageId -errorMsg').lean()
+    const campaign = await Campaign.findOne({ slug }).select('-userId -videoStorageId -audioStorageId -errorMsg').lean()
     if (!campaign) return reply.code(404).send({ message: 'Campaign not found.' })
     return { campaign }
   })
@@ -148,10 +149,13 @@ export default async function campaignRoutes(app: FastifyInstance) {
     let filePath = getLocalPath(filename)
 
     if (!fs.existsSync(filePath)) {
-      // Files wiped by redeploy — regenerate QR on-demand
+      // Files wiped by redeploy — regenerate QR and MindAR target on-demand
       const { qrPngUrl, qrSvgPath } = await generateCampaignQR(campaign.slug)
-      await buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title)
-      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl })
+      const [, targetFileUrl] = await Promise.all([
+        buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title),
+        compileMindARTarget(qrPngUrl, campaign.slug),
+      ])
+      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl, targetFileUrl })
       filePath = getLocalPath(filename)
     }
 
@@ -172,8 +176,11 @@ export default async function campaignRoutes(app: FastifyInstance) {
 
     if (!fs.existsSync(svgPath)) {
       const { qrPngUrl, qrSvgPath } = await generateCampaignQR(campaign.slug)
-      await buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title)
-      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl })
+      const [, targetFileUrl] = await Promise.all([
+        buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title),
+        compileMindARTarget(qrPngUrl, campaign.slug),
+      ])
+      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl, targetFileUrl })
       svgPath = getLocalPath(`qr/${campaign.slug}-vector.svg`)
     }
 
@@ -195,8 +202,11 @@ export default async function campaignRoutes(app: FastifyInstance) {
 
     if (!fs.existsSync(filePath)) {
       const { qrPngUrl, qrSvgPath } = await generateCampaignQR(campaign.slug)
-      const printPackUrl = await buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title)
-      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl, printPackUrl })
+      const [printPackUrl, targetFileUrl] = await Promise.all([
+        buildCampaignPrintPack(campaign.slug, qrPngUrl, qrSvgPath, campaign.title),
+        compileMindARTarget(qrPngUrl, campaign.slug),
+      ])
+      await Campaign.findByIdAndUpdate(id, { qrImageUrl: qrPngUrl, printPackUrl, targetFileUrl })
       filePath = getLocalPath(zipFilename)
     }
 
