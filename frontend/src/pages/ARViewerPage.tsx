@@ -276,7 +276,9 @@ export default function ARViewerPage() {
       />
 
       {/* Off-screen video for MindAR texture — must NOT be display:none or
-          browsers suspend decoding and the VideoTexture gets no frames */}
+          browsers suspend decoding and the VideoTexture gets no frames.
+          No crossOrigin attr: video is write-only into WebGL (no readback),
+          so CORS is not needed and would block cross-subdomain loads. */}
       <video
         ref={overlayVideoRef}
         className="absolute"
@@ -284,7 +286,6 @@ export default function ARViewerPage() {
         playsInline
         muted={muted}
         loop
-        crossOrigin="anonymous"
       />
 
       {/* Tracking hint */}
