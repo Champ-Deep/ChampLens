@@ -148,9 +148,6 @@ export default function CampaignViewerPage() {
 
       await mindarThree.start()
       renderer.setAnimationLoop(() => {
-        // Mark the texture dirty every frame so Three.js uploads the latest
-        // video frame to the GPU — without this the plane stays black.
-        if (videoEl.readyState >= videoEl.HAVE_CURRENT_DATA) texture.needsUpdate = true
         renderer.render(scene, camera)
       })
     } catch (err) {
@@ -272,17 +269,14 @@ export default function CampaignViewerPage() {
         style={{ zIndex: 0 }}
       />
 
-      {/* Off-screen video for MindAR texture — must NOT be display:none or
-          browsers suspend decoding and the VideoTexture gets no frames.
-          No crossOrigin attr: video is write-only into WebGL (no readback),
-          so CORS is not needed and would block cross-subdomain loads. */}
+      {/* Hidden video for MindAR texture (rendered by Three.js) */}
       <video
         ref={overlayVideoRef}
-        className="absolute"
-        style={{ width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
+        className="hidden"
         playsInline
         muted={muted}
         loop
+        crossOrigin="anonymous"
       />
 
       {/* Tracking hint */}
