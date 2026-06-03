@@ -39,6 +39,28 @@ export function getLocalPath(filename: string): string {
   return path.join(uploadsDir, filename)
 }
 
+// Repair a stored asset URL whose origin is stale or a leftover placeholder
+// (e.g. an unfilled "https://<champlens-api>.up.railway.app/files/...") by
+// rebasing everything up to and including "/files/" onto the current
+// FILE_BASE_URL. Self-healing: old DB rows written under a wrong/placeholder
+// FILE_BASE_URL serve correctly once the env is right, with no migration.
+export function repairFileUrl(url: string): string {
+  if (!url) return url
+  const idx = url.indexOf('/files/')
+  if (idx === -1) return url
+  const rel = url.slice(idx + '/files/'.length)
+  return `${fileBaseUrl()}/${rel}`
+}
+
+// Apply repairFileUrl to every known asset-URL field on a card/campaign doc.
+export function repairAssetUrls<T extends Record<string, any>>(doc: T): T {
+  const fields = ['videoUrl', 'thumbnailUrl', 'qrImageUrl', 'targetFileUrl', 'printPackUrl']
+  for (const f of fields) {
+    if (typeof doc[f] === 'string') (doc as any)[f] = repairFileUrl(doc[f])
+  }
+  return doc
+}
+
 export function deleteFile(filename: string) {
   const filePath = path.join(uploadsDir, filename)
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath)

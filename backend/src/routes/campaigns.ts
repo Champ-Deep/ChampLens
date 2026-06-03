@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid'
 import Campaign from '../models/Campaign'
 import CampaignScan from '../models/CampaignScan'
 import { requireAuth } from '../lib/auth'
-import { saveStream, getLocalPath } from '../lib/storage'
+import { saveStream, getLocalPath, repairAssetUrls } from '../lib/storage'
 import { addCampaignJob } from '../workers/queue'
 import { generateCampaignQR } from '../workers/generateCampaignQR'
 import { buildCampaignPrintPack } from '../workers/buildCampaignPrintPack'
@@ -75,7 +75,7 @@ export default async function campaignRoutes(app: FastifyInstance) {
     const scanMap = Object.fromEntries(scanCounts.map((s) => [String(s._id), s.count]))
 
     return {
-      campaigns: campaigns.map((c) => ({ ...c, scanCount: scanMap[String(c._id)] ?? 0 })),
+      campaigns: campaigns.map((c) => ({ ...repairAssetUrls(c), scanCount: scanMap[String(c._id)] ?? 0 })),
     }
   })
 
@@ -84,7 +84,7 @@ export default async function campaignRoutes(app: FastifyInstance) {
     const { slug } = req.params as any
     const campaign = await Campaign.findOne({ slug }).select('-userId -videoStorageId -audioStorageId -errorMsg').lean()
     if (!campaign) return reply.code(404).send({ message: 'Campaign not found.' })
-    return { campaign }
+    return { campaign: repairAssetUrls(campaign) }
   })
 
   // Get single campaign by ID
@@ -96,7 +96,7 @@ export default async function campaignRoutes(app: FastifyInstance) {
       userId: user._id,
     }).lean()
     if (!campaign) return reply.code(404).send({ message: 'Campaign not found.' })
-    return { campaign }
+    return { campaign: repairAssetUrls(campaign) }
   })
 
   // Update campaign fields

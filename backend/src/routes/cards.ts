@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid'
 import Card from '../models/Card'
 import Scan from '../models/Scan'
 import { requireAuth } from '../lib/auth'
-import { saveStream, getLocalPath } from '../lib/storage'
+import { saveStream, getLocalPath, repairAssetUrls } from '../lib/storage'
 import { addCardJob } from '../workers/queue'
 import { generateQR } from '../workers/generateQR'
 import { buildPrintPack } from '../workers/buildPrintPack'
@@ -89,7 +89,7 @@ export default async function cardRoutes(app: FastifyInstance) {
     const { slug } = req.params as any
     const card = await Card.findOne({ slug }).select('-userId -videoStorageId -errorMsg').lean()
     if (!card) return reply.code(404).send({ message: 'Card not found.' })
-    return { card }
+    return { card: repairAssetUrls(card) }
   })
 
   // Get single card by ID (dashboard — auth required)
@@ -102,7 +102,7 @@ export default async function cardRoutes(app: FastifyInstance) {
       userId: user._id,
     }).lean()
     if (!card) return reply.code(404).send({ message: 'Card not found.' })
-    return { card }
+    return { card: repairAssetUrls(card) }
   })
 
   // Update card fields
