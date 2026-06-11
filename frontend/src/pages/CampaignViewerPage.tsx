@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Volume2, VolumeX, X, Camera, AlertCircle, ExternalLink } from 'lucide-react'
 import api from '@/lib/api'
 import { computeCoverPlaneSize } from '@/lib/arCoverPlane'
+import { withIdealCameraResolution } from '@/lib/arCamera'
 import ScanReticle from '@/components/ui/ScanReticle'
 import type { PublicCampaign } from '@/lib/types'
 
@@ -25,6 +26,9 @@ export default function CampaignViewerPage() {
   const [showOverlay, setShowOverlay] = useState(true)
   const [showSoundHint, setShowSoundHint] = useState(false)
   const [noDetectionTimer, setNoDetectionTimer] = useState(false)
+  // True once MindAR's own camera video is live. MindAR calibrates its
+  // projection to that feed, so from then on it must be the visible one.
+  const [arLive, setArLive] = useState(false)
 
   const cameraVideoRef = useRef<HTMLVideoElement>(null)
   const overlayVideoRef = useRef<HTMLVideoElement>(null)
@@ -149,7 +153,22 @@ export default function CampaignViewerPage() {
         noDetectTimerRef.current = setTimeout(() => setNoDetectionTimer(true), 10000)
       }
 
-      await mindarThree.start()
+      // mind-ar requests the camera with no resolution constraints (browser
+      // default, often 640x480 4:3) — the shim makes it ask for the same
+      // 1280x720 as our preview so the feed stays sharp.
+      await withIdealCameraResolution(() => mindarThree.start())
+
+      // MindAR's own camera video (zIndex -2 inside #ar-container) is now
+      // live, and it is the feed the projection matrix is calibrated to.
+      // Drop our preview stream so the user sees exactly that feed — keeping
+      // our separately-cropped preview on top is what made the overlay sit
+      // left/right of the QR.
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+      }
+      setArLive(true)
+
       renderer.setAnimationLoop(() => {
         renderer.render(scene, camera)
       })
@@ -262,15 +281,18 @@ export default function CampaignViewerPage() {
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden" id="ar-container">
-      {/* Camera feed */}
-      <video
-        ref={cameraVideoRef}
-        className="absolute inset-0 w-full h-full object-cover"
-        autoPlay
-        playsInline
-        muted
-        style={{ zIndex: 0 }}
-      />
+      {/* Instant camera preview while MindAR boots. Removed once MindAR's
+          own (projection-calibrated) video takes over as the visible feed. */}
+      {!arLive && (
+        <video
+          ref={cameraVideoRef}
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay
+          playsInline
+          muted
+          style={{ zIndex: 0 }}
+        />
+      )}
 
       {/* Hidden video for MindAR texture (rendered by Three.js) */}
       <video
