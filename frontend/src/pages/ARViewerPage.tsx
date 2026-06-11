@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Volume2, VolumeX, X, Camera, AlertCircle, Loader2 } from 'lucide-react'
+import { Volume2, VolumeX, X, Camera, AlertCircle } from 'lucide-react'
 import api from '@/lib/api'
+import { computeCoverPlaneSize } from '@/lib/arCoverPlane'
+import ScanReticle from '@/components/ui/ScanReticle'
 import type { PublicCard } from '@/lib/types'
 
 type ViewerState =
@@ -135,10 +137,9 @@ export default function ARViewerPage() {
         setTimeout(() => res(getAspect()), 3000)
       })
 
-      // MindAR anchors the plane to the QR card's real-world width (1 unit = card width).
-      // For portrait video the height exceeds the card width, so planeHeight > 1.
-      const planeWidth = 1
-      const planeHeight = planeWidth / aspect
+      // The compiled target is the square QR PNG (1×1 in anchor units), so
+      // cover-fit the plane to it — full video, no crop, QR fully hidden.
+      const { width: planeWidth, height: planeHeight } = computeCoverPlaneSize(aspect)
 
       const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight)
       const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.FrontSide })
@@ -294,8 +295,8 @@ export default function ARViewerPage() {
             className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
             style={{ zIndex: 10 }}
           >
-            <div className="bg-black/50 backdrop-blur-sm rounded-2xl px-6 py-4 text-center">
-              <Loader2 className="w-6 h-6 text-accent mx-auto mb-2 animate-spin" />
+            <ScanReticle />
+            <div className="mt-6 bg-black/50 backdrop-blur-sm rounded-2xl px-6 py-3 text-center">
               <p className="text-sm font-medium">Point camera at the QR code</p>
               {noDetectionTimer && (
                 <p className="text-xs text-text-secondary mt-1">Make sure the QR is well-lit and fully visible</p>
